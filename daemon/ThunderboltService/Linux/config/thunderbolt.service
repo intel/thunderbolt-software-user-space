@@ -1,0 +1,9 @@
+[Unit]
+Description=Thunderbolt Manager
+BindTo=sys-module-thunderbolt.device
+
+[Service]
+Type=dbus
+BusName=com.Intel.Thunderbolt1
+ExecStart=/usr/lib/thunderbolt/thunderboltd
+Restart=on-failure

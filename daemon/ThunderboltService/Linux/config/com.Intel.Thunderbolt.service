@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.Intel.Thunderbolt
+Exec=/usr/lib/thunderbolt/thunderboltd
+User=root
+SystemdService=thunderbolt.service

@@ -1,0 +1,4783 @@
+/* Intel Thunderbolt(TM) Linux driver
+ * Copyright(c) 2013 - 2015 Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * The full GNU General Public License is included in this distribution in
+ * the file called "COPYING".
+ *
+ * Contact Information:
+ * Intel Thunderbolt mailing list <thunderbolt-software@lists.01.org>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ */
+ 
+Thunderbolt Networking mode has been introduced in this patch.
+This kernel code creates an ethernet device utilized in computer to computer
+communications over a Thunderbolt cable.
+The ethernet device is created no matter which security level is deployed 
+on the peer computers.
+
+Kernel/Daemon Compatibility
+===========================
+The Kernel code operates in coordination with the Thunderbolt daemon
+to provide the Thunderbolt functionalities.
+When upgrading to a newer version of the kernel, ensure that a 
+compatible version of the daemon is used.
+By default, same build versions are compatible unless specified. 
+
+Supported Kernel/OS
+====================
+The code was developed and tested on Red Hat* Enterprise Linux 7 
+using Kernel 3.17.
+
+Future Releases	 	 
+================
+The kernel will support acknowledge of devices with security levels 
+above legacy.
+
+Information 
+===========
+Mailing list:
+	thunderbolt-software@lists.01.org
+	Register at: https://lists.01.org/mailman/listinfo/thunderbolt-software
+	Archives at: https://lists.01.org/pipermail/thunderbolt-software/ 
+
+For additional information about Thunderbolt technology visit:
+	https://01.org/thunderbolt-sw
+	https://thunderbolttechnology.net/
+
+Changelog
+=========
+Version 15.2.28.X:
+	- Added support for Thunderbolt Networking 
+ 
+Signed-off-by: Michael Jamet <michael.jamet@intel.com>
+diff -uprN linux/drivers/thunderbolt/Kconfig src/Kconfig
+--- linux/drivers/thunderbolt/Kconfig	2015-02-24 14:12:45.769121000 +0200
++++ src/Kconfig	2015-02-24 14:20:56.000000000 +0200
+@@ -1,13 +1,12 @@
+ menuconfig THUNDERBOLT
+-	tristate "Thunderbolt support for Apple devices"
++	tristate "Thunderbolt support"
+ 	depends on PCI
+ 	select CRC32
+ 	help
+-	  Cactus Ridge Thunderbolt Controller driver
+-	  This driver is required if you want to hotplug Thunderbolt devices on
+-	  Apple hardware.
++	  Thunderbolt Controller driver
++	  This driver is required if you want to hotplug Thunderbolt devices.
+ 
+-	  Device chaining is currently not supported.
++	  Device chaining is currently not supported on Apple hardware.
+ 
+ 	  To compile this driver a module, choose M here. The module will be
+ 	  called thunderbolt.
+diff -uprN linux/drivers/thunderbolt/Makefile src/Makefile
+--- linux/drivers/thunderbolt/Makefile	2015-02-24 14:12:45.771117000 +0200
++++ src/Makefile	2015-02-24 14:20:56.000000000 +0200
+@@ -1,3 +1,2 @@
+ obj-${CONFIG_THUNDERBOLT} := thunderbolt.o
+-thunderbolt-objs := nhi.o ctl.o tb.o switch.o cap.o path.o tunnel_pci.o eeprom.o
+-
++thunderbolt-objs := nhi.o ctl.o tb.o switch.o cap.o path.o tunnel_pci.o eeprom.o icm_nhi.o net.o
+diff -uprN linux/drivers/thunderbolt/icm_nhi.c src/icm_nhi.c
+--- linux/drivers/thunderbolt/icm_nhi.c	1970-01-01 02:00:00.000000000 +0200
++++ src/icm_nhi.c	2015-02-24 14:20:56.000000000 +0200
+@@ -0,0 +1,1587 @@
++/*******************************************************************************
++ *
++ * Intel Thunderbolt(TM) driver
++ * Copyright(c) 2014 - 2015 Intel Corporation.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ * The full GNU General Public License is included in this distribution in
++ * the file called "COPYING".
++ *
++ * Contact Information:
++ * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
++ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
++ *
++ ******************************************************************************/
++
++#include <linux/printk.h>
++#include <linux/crc32.h>
++#include <linux/delay.h>
++#include "nhi_regs.h"
++#include "icm_nhi.h"
++#include "net.h"
++
++#define NHI_GENL_VERSION 1
++#define NHI_GENL_NAME DRV_NAME
++
++/* FW->SW responses */
++enum {
++	GET_THUNDERBOLT_TOPOLOGY_RESPONSE_CODE = 1,
++	GET_VIDEO_RESOURCES_DATA_RESPONSE_CODE,
++	DRIVER_READY_RESPONSE_CODE,
++	APPROVE_PCI_CONNECTION_RESPONSE_CODE,
++	CHALLENGE_PCI_CONNECTION_RESPONSE_CODE,
++	ADD_DEVICE_AND_KEY_RESPONSE_CODE,
++	INTER_DOMAIN_PACKET_SENT_RESPONSE_CODE = 8,
++	APPROVE_INTER_DOMAIN_CONNECTION_RESPONSE_CODE = 0x10
++};
++
++/* FW->SW notifications */
++enum {
++	DEVICE_CONNECTED_NOTIFICATION_CODE = 3,
++	DEVICE_DISCONNECTED_NOTIFICATION_CODE,
++	DP_DEVICE_CONNECTED_NOT_TUNNELED_NOTIFICATION_CODE,
++	INTER_DOMAIN_CONNECTED_NOTIFICATION_CODE,
++	INTER_DOMAIN_DISCONNECTED_NOTIFICATION_CODE
++};
++
++/* NHI genetlink commands */
++enum {
++	NHI_CMD_UNSPEC,
++	NHI_CMD_SUBSCRIBE,
++	NHI_CMD_UNSUBSCRIBE,
++	NHI_CMD_QUERY_INFORMATION,
++	NHI_CMD_MSG_TO_ICM,
++	NHI_CMD_MSG_FROM_ICM,
++	NHI_CMD_MAILBOX,
++	NHI_CMD_APPROVE_TBT_NETWORKING,
++	NHI_CMD_ICM_IN_SAFE_MODE,
++	__NHI_CMD_MAX,
++};
++#define NHI_CMD_MAX (__NHI_CMD_MAX - 1)
++
++/* NHI genetlink policy */
++static const struct nla_policy nhi_genl_policy[NHI_ATTR_MAX + 1] = {
++	[NHI_ATTR_DRIVER_VERSION]	= { .type = NLA_NUL_STRING, },
++	[NHI_ATTR_NVM_VER_OFFSET]	= { .type = NLA_U16, },
++	[NHI_ATTR_NUM_PORTS]		= { .type = NLA_U8, },
++	[NHI_ATTR_DMA_PORT]		= { .type = NLA_U8, },
++	[NHI_ATTR_MAILBOX_CMD]		= { .type = NLA_U32, },
++	[NHI_ATTR_PDF]			= { .type = NLA_U32, },
++	[NHI_ATTR_MSG_TO_ICM]		= { .type = NLA_BINARY,
++					.len = TBT_ICM_RING_MAX_FRAME_SIZE },
++	[NHI_ATTR_MSG_FROM_ICM]		= { .type = NLA_BINARY,
++					.len = TBT_ICM_RING_MAX_FRAME_SIZE },
++	[NHI_ATTR_LOCAL_ROUTE_STRING]	= {.len = sizeof(struct route_string)},
++	[NHI_ATTR_LOCAL_UNIQUE_ID]	= { .len = sizeof(unique_id) },
++	[NHI_ATTR_REMOTE_UNIQUE_ID]	= { .len = sizeof(unique_id) },
++	[NHI_ATTR_LOCAL_DEPTH]		= { .type = NLA_U8, },
++};
++
++static int nhi_genl_subscribe(__always_unused struct sk_buff *u_skb,
++			      struct genl_info *info)
++			      __acquires(&nhi_ctxt->send_sem);
++static int nhi_genl_unsubscribe(__always_unused struct sk_buff *u_skb,
++				__always_unused struct genl_info *info);
++static int nhi_genl_query_information(__always_unused struct sk_buff *u_skb,
++				      struct genl_info *info);
++static int nhi_genl_msg_to_icm(__always_unused struct sk_buff *u_skb,
++			       struct genl_info *info)
++			       __acquires(&nhi_ctxt->send_sem);
++static int nhi_genl_mailbox(__always_unused struct sk_buff *u_skb,
++			    struct genl_info *info);
++static int nhi_genl_approve_networking(__always_unused struct sk_buff *u_skb,
++				       struct genl_info *info);
++
++/* NHI genetlink operations array */
++static const struct genl_ops nhi_ops[] = {
++	{
++		.cmd = NHI_CMD_SUBSCRIBE,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_subscribe,
++	},
++	{
++		.cmd = NHI_CMD_UNSUBSCRIBE,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_unsubscribe,
++	},
++	{
++		.cmd = NHI_CMD_QUERY_INFORMATION,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_query_information,
++	},
++	{
++		.cmd = NHI_CMD_MSG_TO_ICM,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_msg_to_icm,
++		.flags = GENL_ADMIN_PERM,
++	},
++	{
++		.cmd = NHI_CMD_MAILBOX,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_mailbox,
++		.flags = GENL_ADMIN_PERM,
++	},
++	{
++		.cmd = NHI_CMD_APPROVE_TBT_NETWORKING,
++		.policy = nhi_genl_policy,
++		.doit = nhi_genl_approve_networking,
++		.flags = GENL_ADMIN_PERM,
++	},
++};
++
++/* NHI genetlink family */
++static struct genl_family nhi_genl_family = {
++	.id		= GENL_ID_GENERATE,
++	.hdrsize	= FIELD_SIZEOF(struct tbt_nhi_ctxt, id),
++	.name		= NHI_GENL_NAME,
++	.version	= NHI_GENL_VERSION,
++	.maxattr	= NHI_ATTR_MAX,
++};
++
++static LIST_HEAD(controllers_list);
++static DECLARE_RWSEM(controllers_list_rwsem);
++static atomic_t subscribers = ATOMIC_INIT(0);
++static u32 portid;
++
++static bool nhi_nvm_authenticated(struct tbt_nhi_ctxt *nhi_ctxt)
++{
++	u32 *msg_head;
++	struct sk_buff *skb;
++	int i;
++	u32 reg;
++	enum icm_operation_mode op_mode;
++	bool res = true;
++
++	TRACE_FUNC_ENTRY();
++
++	if (!nhi_ctxt->nvm_auth_on_boot)
++		goto out;
++
++	for (i = 0; (i < 5) && !(ioread32(nhi_ctxt->iobase + REG_FW_STS) &
++				 REG_FW_STS_NVM_AUTH_DONE); i++)
++		msleep(30);
++
++	reg = ioread32(nhi_ctxt->iobase + REG_OUTMAIL_CMD);
++	op_mode = (reg & REG_OUTMAIL_CMD_OP_MODE_MASK) >>
++		  REG_OUTMAIL_CMD_OP_MODE_SHIFT;
++	if (op_mode == FULL_FUNCTIONALITY)
++		goto out;
++
++	dev_warn(&nhi_ctxt->pdev->dev, "%s: controller id 0x%x is in operation mode 0x%x status 0x%x\n",
++		 __func__, nhi_ctxt->id, op_mode,
++		 (reg & REG_OUTMAIL_CMD_STATUS_MASK) >>
++		 REG_OUTMAIL_CMD_STATUS_SHIFT);
++
++	res = false;
++
++	skb = genlmsg_new(NLMSG_ALIGN(nhi_genl_family.hdrsize), GFP_KERNEL);
++	if (skb == NULL) {
++		dev_err(&nhi_ctxt->pdev->dev, "%s: genlmsg_new error\n",
++			__func__);
++		goto out;
++	}
++
++	msg_head = genlmsg_put(skb, portid, 0, &nhi_genl_family, 0,
++			       NHI_CMD_ICM_IN_SAFE_MODE);
++	if (msg_head == NULL) {
++		nlmsg_free(skb);
++		dev_err(&nhi_ctxt->pdev->dev, "%s: genlmsg_put error\n",
++			__func__);
++		goto out;
++	}
++
++	*msg_head = nhi_ctxt->id;
++
++	genlmsg_end(skb, msg_head);
++
++	genlmsg_unicast(&init_net, skb, portid);
++
++out:
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++int nhi_send_message(struct tbt_nhi_ctxt *nhi_ctxt, enum pdf_value pdf,
++		      u32 msg_len, const u8 *msg, bool ignore_icm_resp)
++{
++	int res = 0;
++	u32 prod_cons, prod, cons;
++	void __iomem *reg = nhi_ctxt->iobase + REG_TX_RING_BASE +
++		(TBT_ICM_RING_NUM * REG_RING_STEP) + REG_RING_CONS_PROD_OFFSET;
++
++	TRACE_FUNC_ENTRY();
++
++	dev_dbg(&nhi_ctxt->pdev->dev,
++		"%s: controller id 0x%x pdf %u cmd %hhu msg len %u\n",
++		__func__, nhi_ctxt->id, pdf, msg[3], msg_len);
++	print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET, msg, msg_len);
++
++	if (nhi_ctxt->d0_exit) {
++		dev_notice(&nhi_ctxt->pdev->dev,
++			   "%s: controller id 0x%x is existing D0\n",
++			   __func__, nhi_ctxt->id);
++		res = -ENODEV;
++		goto out;
++	}
++
++	prod_cons = ioread32(reg);
++	prod = (prod_cons & REG_RING_PROD_MASK) >> REG_RING_PROD_SHIFT;
++	cons = (prod_cons & REG_RING_CONS_MASK) >> REG_RING_CONS_SHIFT;
++	if (prod >= TBT_ICM_RING_NUM_TX_BUFS) {
++		res = -ENODEV;
++		dev_warn(&nhi_ctxt->pdev->dev,
++			 "%s: controller id 0x%x producer %u out of range\n",
++			 __func__, nhi_ctxt->id, prod);
++		goto out;
++	}
++	if (TBT_TX_RING_FULL(prod, cons, TBT_ICM_RING_NUM_TX_BUFS)) {
++		res = -ENOSPC;
++		dev_err(&nhi_ctxt->pdev->dev,
++			"%s: controller id 0x%x TX ring full\n",
++			__func__, nhi_ctxt->id);
++		goto out;
++	}
++
++	nhi_ctxt->icm_ring_shared_mem->tx_buf_desc[prod].attributes =
++		cpu_to_le32(
++			((msg_len << DESC_ATTR_LEN_SHIFT) & DESC_ATTR_LEN_MASK)
++			| ((pdf << DESC_ATTR_EOF_SHIFT) & DESC_ATTR_EOF_MASK));
++	memcpy(nhi_ctxt->icm_ring_shared_mem->tx_buf[prod],
++	       msg, msg_len);
++
++	prod_cons &= ~REG_RING_PROD_MASK;
++	prod_cons |= (((prod + 1) % TBT_ICM_RING_NUM_TX_BUFS) <<
++		      REG_RING_PROD_SHIFT) &
++		     REG_RING_PROD_MASK;
++
++	if (likely(!nhi_ctxt->wait_for_icm_resp))
++		nhi_ctxt->wait_for_icm_resp = true;
++	else
++		dev_dbg(&nhi_ctxt->pdev->dev,
++			"%s: controller id 0x%x wait_for_icm_resp should have been cleared\n",
++			__func__, nhi_ctxt->id);
++
++	nhi_ctxt->ignore_icm_resp = ignore_icm_resp;
++
++	wmb(); /* make sure producer update is done after nhi_ctxt update */
++	iowrite32(prod_cons, reg);
++
++out:
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++static inline int nhi_send_driver_ready_command(struct tbt_nhi_ctxt *nhi_ctxt)
++{
++	int res;
++	struct driver_ready_command {
++		__be32 req_code;
++		__be32 crc;
++	} drv_rdy_cmd = {
++		.req_code = cpu_to_be32(DRIVER_READY_COMMAND_CODE),
++	};
++
++	TRACE_FUNC_ENTRY();
++
++	drv_rdy_cmd.crc = cpu_to_be32(~__crc32c_le(
++				~0, (unsigned char const *)&drv_rdy_cmd,
++				offsetof(struct driver_ready_command, crc)));
++
++	res = nhi_send_message(nhi_ctxt, PDF_SW_TO_FW_COMMAND,
++			       sizeof(drv_rdy_cmd), (u8 *)&drv_rdy_cmd, false);
++
++	TRACE_FUNC_EXIT();
++
++	return res;
++}
++
++static int nhi_genl_subscribe(__always_unused struct sk_buff *u_skb,
++			      struct genl_info *info)
++			      __acquires(&nhi_ctxt->send_sem)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt;
++
++	TRACE_FUNC_ENTRY();
++
++	if (atomic_inc_return(&subscribers) >= 1) {
++		portid = info->snd_portid;
++		down_read(&controllers_list_rwsem);
++		list_for_each_entry(nhi_ctxt, &controllers_list, node) {
++			int res;
++
++			if (nhi_ctxt->d0_exit ||
++			    !nhi_nvm_authenticated(nhi_ctxt))
++				continue;
++
++			res = down_timeout(&nhi_ctxt->send_sem,
++					   msecs_to_jiffies(10*MSEC_PER_SEC));
++			if (res) {
++				dev_err(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x timeout on send semaphore\n",
++					__func__, nhi_ctxt->id);
++				continue;
++			}
++
++			if (!mutex_trylock(&nhi_ctxt->d0_exit_send_mutex)) {
++				up(&nhi_ctxt->send_sem);
++				continue;
++			}
++
++			res = nhi_send_driver_ready_command(nhi_ctxt);
++
++			mutex_unlock(&nhi_ctxt->d0_exit_send_mutex);
++			if (res)
++				up(&nhi_ctxt->send_sem);
++		}
++		up_read(&controllers_list_rwsem);
++	}
++
++	TRACE_FUNC_EXIT();
++
++	return 0;
++}
++
++static int nhi_genl_unsubscribe(__always_unused struct sk_buff *u_skb,
++				__always_unused struct genl_info *info)
++{
++	TRACE_FUNC_ENTRY();
++
++	atomic_dec_if_positive(&subscribers);
++
++	TRACE_FUNC_EXIT();
++
++	return 0;
++}
++
++static int nhi_genl_query_information(__always_unused struct sk_buff *u_skb,
++				      struct genl_info *info)
++{
++	int res = -ENODEV;
++	struct tbt_nhi_ctxt *nhi_ctxt;
++	u32 *msg_head;
++	struct sk_buff *skb;
++
++	TRACE_FUNC_ENTRY();
++
++	if ((info == NULL) || (info->userhdr == NULL)) {
++		res = -EINVAL;
++		goto failure;
++	}
++
++	skb = genlmsg_new(NLMSG_ALIGN(nhi_genl_family.hdrsize) +
++			  nla_total_size(sizeof(DRV_VERSION)) +
++			  nla_total_size(sizeof(nhi_ctxt->nvm_ver_offset)) +
++			  nla_total_size(sizeof(nhi_ctxt->num_ports)) +
++			  nla_total_size(sizeof(nhi_ctxt->dma_port)),
++			  GFP_KERNEL);
++	if (skb == NULL) {
++		res = -ENOMEM;
++		goto failure;
++	}
++
++	msg_head = genlmsg_put_reply(skb, info, &nhi_genl_family, 0,
++				     NHI_CMD_QUERY_INFORMATION);
++	if (msg_head == NULL) {
++		res = -ENOMEM;
++		goto genl_put_reply_failure;
++	}
++
++	down_read(&controllers_list_rwsem);
++	list_for_each_entry(nhi_ctxt, &controllers_list, node) {
++		if (nhi_ctxt->id == *(u32 *)info->userhdr) {
++			if (nhi_ctxt->d0_exit)
++				break;
++
++			*msg_head = nhi_ctxt->id;
++
++			if (nla_put_string(skb, NHI_ATTR_DRIVER_VERSION,
++					   DRV_VERSION) ||
++			    nla_put_u16(skb, NHI_ATTR_NVM_VER_OFFSET,
++					nhi_ctxt->nvm_ver_offset) ||
++			    nla_put_u8(skb, NHI_ATTR_NUM_PORTS,
++				       nhi_ctxt->num_ports) ||
++			    nla_put_u8(skb, NHI_ATTR_DMA_PORT,
++				       nhi_ctxt->dma_port)) {
++				res = -EMSGSIZE;
++				break;
++			}
++			up_read(&controllers_list_rwsem);
++
++			genlmsg_end(skb, msg_head);
++
++			TRACE_FUNC_EXIT();
++			return genlmsg_reply(skb, info);
++
++		}
++	}
++	up_read(&controllers_list_rwsem);
++
++	genlmsg_cancel(skb, msg_head);
++
++genl_put_reply_failure:
++	nlmsg_free(skb);
++failure:
++	pr_err("%s: error %d\n", __func__, res);
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++static int nhi_genl_msg_to_icm(__always_unused struct sk_buff *u_skb,
++			       struct genl_info *info)
++			       __acquires(&nhi_ctxt->send_sem)
++{
++	int res = -ENODEV;
++	int msg_len;
++	void *msg;
++	struct tbt_nhi_ctxt *nhi_ctxt;
++
++	TRACE_FUNC_ENTRY();
++
++	if ((info == NULL) || (info->userhdr == NULL) || (info->attrs == NULL)
++	    || (info->attrs[NHI_ATTR_PDF] == NULL)
++	    || (info->attrs[NHI_ATTR_MSG_TO_ICM] == NULL)) {
++		res = -EINVAL;
++		goto failure;
++	}
++
++	msg_len = nla_len(info->attrs[NHI_ATTR_MSG_TO_ICM]);
++	if (msg_len > TBT_ICM_RING_MAX_FRAME_SIZE) {
++		res = -ENOBUFS;
++		goto failure;
++	}
++
++	msg = nla_data(info->attrs[NHI_ATTR_MSG_TO_ICM]);
++
++	down_read(&controllers_list_rwsem);
++	list_for_each_entry(nhi_ctxt, &controllers_list, node) {
++		if (nhi_ctxt->id == *(u32 *)info->userhdr) {
++			if (nhi_ctxt->d0_exit)
++				break;
++
++			res = down_timeout(&nhi_ctxt->send_sem,
++					   msecs_to_jiffies(10*MSEC_PER_SEC));
++			if (res) {
++				void __iomem *rx_prod_cons = nhi_ctxt->iobase +
++					REG_RX_RING_BASE +
++					(TBT_ICM_RING_NUM * REG_RING_STEP) +
++					REG_RING_CONS_PROD_OFFSET;
++				void __iomem *tx_prod_cons = nhi_ctxt->iobase +
++					REG_TX_RING_BASE +
++					(TBT_ICM_RING_NUM * REG_RING_STEP) +
++					REG_RING_CONS_PROD_OFFSET;
++				dev_err(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x timeout on send semaphore\n",
++					__func__, nhi_ctxt->id);
++				dev_dbg(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x, tx prod&cons=0x%x, rx prod&cons=0x%x\n",
++					__func__, nhi_ctxt->id,
++					ioread32(tx_prod_cons),
++					ioread32(rx_prod_cons));
++				break;
++			}
++
++			if (!mutex_trylock(&nhi_ctxt->d0_exit_send_mutex)) {
++				up(&nhi_ctxt->send_sem);
++				dev_notice(&nhi_ctxt->pdev->dev,
++					   "%s: controller id 0x%x is existing D0\n",
++					   __func__, nhi_ctxt->id);
++				break;
++			}
++
++			up_read(&controllers_list_rwsem);
++
++			res = nhi_send_message(
++					nhi_ctxt,
++					nla_get_u32(info->attrs[NHI_ATTR_PDF]),
++					msg_len, msg, false);
++
++			mutex_unlock(&nhi_ctxt->d0_exit_send_mutex);
++			if (res)
++				up(&nhi_ctxt->send_sem);
++
++			TRACE_FUNC_EXIT();
++			return res;
++		}
++	}
++	up_read(&controllers_list_rwsem);
++
++failure:
++	pr_err("%s: error %d\n", __func__, res);
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++int nhi_mailbox(struct tbt_nhi_ctxt *nhi_ctxt, u32 cmd, bool deinit)
++{
++	int i;
++	u32 delay = deinit ? U32_C(20) : U32_C(100);
++
++	dev_dbg(&nhi_ctxt->pdev->dev, "%s: controller id 0x%x command 0x%x\n",
++		__func__, nhi_ctxt->id, cmd);
++	iowrite32(cmd, nhi_ctxt->iobase + REG_INMAIL_CMD);
++
++#define INMAIL_CMD_RETRIES 50
++	for (i = 0;
++	     (i < INMAIL_CMD_RETRIES) && (deinit ||
++					  !ACCESS_ONCE(nhi_ctxt->d0_exit));
++	     i++) {
++		cmd = ioread32(nhi_ctxt->iobase + REG_INMAIL_CMD);
++
++		if (cmd & REG_INMAIL_CMD_ERROR) {
++			dev_err(&nhi_ctxt->pdev->dev,
++				"%s: inmail error after %d msecs\n",
++				__func__, i * delay);
++			return -EIO;
++		}
++
++		if (!(cmd & REG_INMAIL_CMD_REQUEST))
++			break;
++
++		msleep(delay);
++	}
++
++	if (i == INMAIL_CMD_RETRIES) {
++		dev_err(&nhi_ctxt->pdev->dev, "%s: inmail timeout\n",
++			__func__);
++		return -EIO;
++	}
++
++	return 0;
++}
++
++static int nhi_genl_mailbox(__always_unused struct sk_buff *u_skb,
++			    struct genl_info *info)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt;
++	int res = -ENODEV;
++	u32 cmd, mb_cmd;
++
++	TRACE_FUNC_ENTRY();
++
++	if ((info == NULL) || (info->userhdr == NULL) || (info->attrs == NULL)
++	    || (info->attrs[NHI_ATTR_MAILBOX_CMD] == NULL)) {
++		res = -EINVAL;
++		goto failure;
++	}
++
++	cmd = nla_get_u32(info->attrs[NHI_ATTR_MAILBOX_CMD]);
++	mb_cmd = ((cmd << REG_INMAIL_CMD_CMD_SHIFT) &
++	       REG_INMAIL_CMD_CMD_MASK) |
++	      REG_INMAIL_CMD_REQUEST;
++
++	down_read(&controllers_list_rwsem);
++	list_for_each_entry(nhi_ctxt, &controllers_list, node) {
++		if (nhi_ctxt->id == *(u32 *)info->userhdr) {
++			struct port_net_dev *port;
++			bool disconnect_path = (
++				(cmd >= DISCONNECT_PORT_A_INTER_DOMAIN_PATH) &&
++				(cmd < (DISCONNECT_PORT_A_INTER_DOMAIN_PATH +
++					nhi_ctxt->num_ports)));
++
++			if (disconnect_path) {
++				u32 port_num = cmd -
++					DISCONNECT_PORT_A_INTER_DOMAIN_PATH;
++				port = &(nhi_ctxt->net_devices[port_num]);
++				mutex_lock(&port->state_mutex);
++			} else {
++				if (mutex_lock_interruptible(
++						&nhi_ctxt->mailbox_mutex))
++					break;
++
++				if (!mutex_trylock(
++					&nhi_ctxt->d0_exit_mailbox_mutex)) {
++					mutex_unlock(&nhi_ctxt->mailbox_mutex);
++					dev_notice(&nhi_ctxt->pdev->dev,
++						   "%s: controller id 0x%x is existing D0\n",
++						   __func__, nhi_ctxt->id);
++					break;
++				}
++			}
++
++			up_read(&controllers_list_rwsem);
++
++			if (disconnect_path) {
++				port->medium_sts = MEDIUM_READY_FOR_APPROVAL;
++				if (port->net_dev)
++					negotiation_events(
++						port->net_dev,
++						MEDIUM_DISCONNECTED);
++				mutex_unlock(&port->state_mutex);
++				res = 0;
++			} else {
++				res = nhi_mailbox(nhi_ctxt, mb_cmd, false);
++
++				mutex_unlock(&nhi_ctxt->d0_exit_mailbox_mutex);
++				mutex_unlock(&nhi_ctxt->mailbox_mutex);
++			}
++
++			TRACE_FUNC_EXIT();
++			return res;
++		}
++	}
++	up_read(&controllers_list_rwsem);
++
++failure:
++	pr_err("%s: error %d\n", __func__, res);
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++static int nhi_genl_approve_networking(__always_unused struct sk_buff *u_skb,
++				       struct genl_info *info)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt;
++	struct route_string *route_str;
++	int res = -ENODEV;
++	u8 port_num;
++
++	TRACE_FUNC_ENTRY();
++
++	if ((info == NULL) || (info->userhdr == NULL) || (info->attrs == NULL)
++	    || (info->attrs[NHI_ATTR_LOCAL_ROUTE_STRING] == NULL)
++	    || (info->attrs[NHI_ATTR_LOCAL_UNIQUE_ID] == NULL)
++	    || (info->attrs[NHI_ATTR_REMOTE_UNIQUE_ID] == NULL)
++	    || (info->attrs[NHI_ATTR_LOCAL_DEPTH] == NULL)) {
++		res = -EINVAL;
++		goto failure;
++	}
++
++	route_str = nla_data(info->attrs[NHI_ATTR_LOCAL_ROUTE_STRING]);
++	port_num = PORT_NUM_FROM_LINK(L0_PORT_NUM(route_str->lo));
++
++	down_read(&controllers_list_rwsem);
++	list_for_each_entry(nhi_ctxt, &controllers_list, node) {
++		if (nhi_ctxt->id == *(u32 *)info->userhdr) {
++			struct port_net_dev *port;
++
++			if (nhi_ctxt->d0_exit)
++				break;
++
++			if (port_num >= nhi_ctxt->num_ports) {
++				res = -EINVAL;
++				break;
++			}
++
++			port = &(nhi_ctxt->net_devices[port_num]);
++
++			mutex_lock(&port->state_mutex);
++			up_read(&controllers_list_rwsem);
++
++			if (port->medium_sts != MEDIUM_READY_FOR_APPROVAL) {
++				dev_dbg(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x in state %u <> MEDIUM_READY_FOR_APPROVAL\n",
++					__func__, nhi_ctxt->id,
++					port->medium_sts);
++				goto unlock;
++			}
++
++			port->medium_sts = MEDIUM_READY_FOR_CONNECTION;
++
++			if (!port->net_dev) {
++				port->net_dev = nhi_alloc_etherdev(nhi_ctxt,
++								   port_num,
++								   info);
++				if (!port->net_dev) {
++					mutex_lock(&port->state_mutex);
++					res = -ENOMEM;
++					break;
++				}
++			} else
++				negotiation_events(
++						port->net_dev,
++						MEDIUM_READY_FOR_CONNECTION);
++
++unlock:
++			mutex_unlock(&port->state_mutex);
++			TRACE_FUNC_EXIT();
++			return 0;
++		}
++	}
++	up_read(&controllers_list_rwsem);
++
++failure:
++	pr_err("%s: error %d\n", __func__, res);
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++
++static int nhi_genl_send_msg(struct tbt_nhi_ctxt *nhi_ctxt, enum pdf_value pdf,
++			     const u8 *msg, u32 msg_len)
++{
++	int res;
++	u32 *msg_head;
++	struct sk_buff *skb;
++
++	TRACE_FUNC_ENTRY();
++
++	if (atomic_read(&subscribers) < 1) {
++		dev_notice(&nhi_ctxt->pdev->dev, "%s: no subscribers for controller id 0x%x, dropping message - pdf %u cmd %hhu msg len %u\n",
++			   __func__, nhi_ctxt->id, pdf, msg[3], msg_len);
++		res = -ENOTCONN;
++		goto out;
++	}
++
++	skb = genlmsg_new(NLMSG_ALIGN(nhi_genl_family.hdrsize) +
++			  nla_total_size(msg_len) +
++			  nla_total_size(sizeof(pdf)),
++			  GFP_KERNEL);
++	if (skb == NULL) {
++		res = -ENOMEM;
++		goto failure;
++	}
++
++	msg_head = genlmsg_put(skb, portid, 0, &nhi_genl_family, 0,
++			       NHI_CMD_MSG_FROM_ICM);
++	if (msg_head == NULL) {
++		res = -ENOMEM;
++		goto genl_put_reply_failure;
++	}
++
++	*msg_head = nhi_ctxt->id;
++
++	if (nla_put_u32(skb, NHI_ATTR_PDF, pdf) ||
++	    nla_put(skb, NHI_ATTR_MSG_FROM_ICM, msg_len, msg)) {
++		res = -EMSGSIZE;
++		goto nla_put_failure;
++	}
++
++	genlmsg_end(skb, msg_head);
++
++	TRACE_FUNC_EXIT();
++	return genlmsg_unicast(&init_net, skb, portid);
++
++nla_put_failure:
++	genlmsg_cancel(skb, msg_head);
++genl_put_reply_failure:
++	nlmsg_free(skb);
++failure:
++	dev_err(&nhi_ctxt->pdev->dev, "%s: error %d\n", __func__, res);
++out:
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++static void nhi_msgs_from_icm(struct work_struct *work)
++	__releases(&nhi_ctxt->send_sem)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt = container_of(work, typeof(*nhi_ctxt),
++						     icm_msgs_work);
++	void __iomem *reg = nhi_ctxt->iobase + REG_RX_RING_BASE +
++		(TBT_ICM_RING_NUM * REG_RING_STEP) + REG_RING_CONS_PROD_OFFSET;
++	u32 prod_cons, prod, cons;
++
++	TRACE_FUNC_ENTRY();
++
++	prod_cons = ioread32(reg);
++	prod = (prod_cons & REG_RING_PROD_MASK) >> REG_RING_PROD_SHIFT;
++	cons = (prod_cons & REG_RING_CONS_MASK) >> REG_RING_CONS_SHIFT;
++	if (prod >= TBT_ICM_RING_NUM_RX_BUFS) {
++		dev_warn(&nhi_ctxt->pdev->dev,
++			 "%s: controller id 0x%x producer %u out of range\n",
++			 __func__, nhi_ctxt->id, prod);
++		goto out;
++	}
++	if (cons >= TBT_ICM_RING_NUM_RX_BUFS) {
++		dev_warn(&nhi_ctxt->pdev->dev,
++			 "%s: controller id 0x%x consumer %u out of range\n",
++			 __func__, nhi_ctxt->id, cons);
++		goto out;
++	}
++
++	while (!TBT_RX_RING_EMPTY(prod, cons, TBT_ICM_RING_NUM_RX_BUFS) &&
++	       !nhi_ctxt->d0_exit) {
++		struct port_net_dev *port;
++		struct tbt_buf_desc *rx_desc;
++		u8 *msg;
++		u32 msg_len;
++		enum pdf_value pdf;
++		bool send_event = true;
++		u8 port_num;
++
++		cons = (cons + 1) % TBT_ICM_RING_NUM_RX_BUFS;
++		rx_desc = &(nhi_ctxt->icm_ring_shared_mem->rx_buf_desc[cons]);
++		if (!(le32_to_cpu(rx_desc->attributes) &
++							DESC_ATTR_DESC_DONE)) {
++			usleep_range(10, 20);
++			if (unlikely(!(le32_to_cpu(rx_desc->attributes) &
++				       DESC_ATTR_DESC_DONE)))
++				dev_err(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x buffer %u might not completely processed\n",
++					__func__, nhi_ctxt->id, cons);
++		}
++
++		rmb(); /* read the descriptor and the buffer after DD check */
++		pdf = (le32_to_cpu(rx_desc->attributes) & DESC_ATTR_EOF_MASK)
++		      >> DESC_ATTR_EOF_SHIFT;
++		msg = nhi_ctxt->icm_ring_shared_mem->rx_buf[cons];
++		msg_len = (le32_to_cpu(rx_desc->attributes)&DESC_ATTR_LEN_MASK)
++			  >> DESC_ATTR_LEN_SHIFT;
++
++		dev_dbg(&nhi_ctxt->pdev->dev,
++			"%s: controller id 0x%x pdf %u cmd %hhu msg len %u\n",
++			__func__, nhi_ctxt->id, pdf, msg[3], msg_len);
++		print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET, msg,
++				     msg_len);
++
++		switch (pdf) {
++
++		case PDF_INTER_DOMAIN_REQUEST:
++		case PDF_INTER_DOMAIN_RESPONSE:
++			{
++				int i;
++				struct thunderbolt_ip_header *hdr =
++					(struct thunderbolt_ip_header *)msg;
++
++				const unique_id_be apple_tbt_ip_proto_uuid =
++					APPLE_THUNDERBOLT_IP_PROTOCOL_UUID;
++
++				for (i = 0;
++				     (i < ARRAY_SIZE(apple_tbt_ip_proto_uuid))
++				     && (hdr->apple_tbt_ip_proto_uuid[i] ==
++						apple_tbt_ip_proto_uuid[i]);
++				     i++)
++					;
++				if (i != ARRAY_SIZE(apple_tbt_ip_proto_uuid)) {
++					dev_dbg(&nhi_ctxt->pdev->dev,
++						"%s: controller id 0x%x XDomain discovery message\n",
++						__func__, nhi_ctxt->id);
++					break;
++				}
++
++				dev_dbg(&nhi_ctxt->pdev->dev,
++					"%s: controller id 0x%x ThunderboltIP %u\n",
++					__func__, nhi_ctxt->id,
++					be32_to_cpu(hdr->packet_type));
++
++				send_event = false;
++
++				port_num = PORT_NUM_FROM_LINK(L0_PORT_NUM(
++					be32_to_cpu(hdr->route_str.lo)));
++
++				if (unlikely(
++					port_num >= nhi_ctxt->num_ports)) {
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s:controller id 0x%x invalid port %u in ThunderboltIP message\n",
++						__func__, nhi_ctxt->id,
++						port_num);
++					break;
++				}
++
++				port = &(nhi_ctxt->net_devices[port_num]);
++				mutex_lock(&port->state_mutex);
++				if (likely(port->net_dev != NULL))
++					negotiation_messages(port->net_dev,
++							     hdr);
++				else
++					dev_notice(&nhi_ctxt->pdev->dev,
++						   "%s:controller id 0x%x port %u in ThunderboltIP message was not initialized\n",
++						   __func__, nhi_ctxt->id,
++						   port_num);
++				mutex_unlock(&port->state_mutex);
++			}
++			break;
++
++		case PDF_FW_TO_SW_NOTIFICATION:
++#define INTER_DOMAIN_LINK_SHIFT	0
++#define INTER_DOMAIN_LINK_MASK	GENMASK(2, INTER_DOMAIN_LINK_SHIFT)
++			switch (msg[3]) {
++
++			case INTER_DOMAIN_CONNECTED_NOTIFICATION_CODE:
++				port_num = PORT_NUM_FROM_LINK(
++					(msg[5] & INTER_DOMAIN_LINK_MASK) >>
++					INTER_DOMAIN_LINK_SHIFT);
++#define INTER_DOMAIN_APPROVED BIT(3)
++				if (likely(port_num < nhi_ctxt->num_ports)) {
++					if (!(msg[5] & INTER_DOMAIN_APPROVED))
++						nhi_ctxt->net_devices[
++							port_num].medium_sts =
++						     MEDIUM_READY_FOR_APPROVAL;
++				} else
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s:controller id 0x%x invalid port %u in inter domain connected message\n",
++						__func__, nhi_ctxt->id,
++						port_num);
++				break;
++
++			case INTER_DOMAIN_DISCONNECTED_NOTIFICATION_CODE:
++				port_num = PORT_NUM_FROM_LINK(
++					(msg[5] & INTER_DOMAIN_LINK_MASK) >>
++					INTER_DOMAIN_LINK_SHIFT);
++				if (unlikely(port_num >=
++					     nhi_ctxt->num_ports)) {
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s:controller id 0x%x invalid port %u in inter domain disconnected message\n",
++						__func__, nhi_ctxt->id,
++						port_num);
++					break;
++				}
++
++				port = &(nhi_ctxt->net_devices[port_num]);
++				mutex_lock(&port->state_mutex);
++				port->medium_sts = MEDIUM_DISCONNECTED;
++
++				if (likely(port->net_dev != NULL))
++					negotiation_events(port->net_dev,
++							   MEDIUM_DISCONNECTED);
++				else
++					dev_notice(&nhi_ctxt->pdev->dev,
++						   "%s:controller id 0x%x port %u in inter domain disconnected message was not initialized\n",
++						   __func__, nhi_ctxt->id,
++						   port_num);
++				mutex_unlock(&port->state_mutex);
++				break;
++			}
++			break;
++
++		case PDF_ERROR_NOTIFICATION:
++			dev_err(&nhi_ctxt->pdev->dev,
++				"%s: controller id 0x%x PDF_ERROR_NOTIFICATION %hhu msg len %u\n",
++				__func__, nhi_ctxt->id, msg[11], msg_len);
++			/* fallthrough */
++		case PDF_WRITE_CONFIGURATION_REGISTERS:
++			/* fallthrough */
++		case PDF_READ_CONFIGURATION_REGISTERS:
++			if (nhi_ctxt->wait_for_icm_resp) {
++				nhi_ctxt->wait_for_icm_resp = false;
++				up(&nhi_ctxt->send_sem);
++			}
++			break;
++
++		case PDF_FW_TO_SW_RESPONSE:
++			if (nhi_ctxt->ignore_icm_resp &&
++			    msg[3] == INTER_DOMAIN_PACKET_SENT_RESPONSE_CODE) {
++				nhi_ctxt->ignore_icm_resp = false;
++				send_event = false;
++			}
++			if (nhi_ctxt->wait_for_icm_resp) {
++				nhi_ctxt->wait_for_icm_resp = false;
++				up(&nhi_ctxt->send_sem);
++			}
++
++			if (msg[3] ==
++			    APPROVE_INTER_DOMAIN_CONNECTION_RESPONSE_CODE) {
++#define APPROVE_INTER_DOMAIN_ERROR BIT(0)
++				if (unlikely(msg[2] &
++					     APPROVE_INTER_DOMAIN_ERROR)) {
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s: controller id 0x%x inter domain approve error\n",
++						__func__, nhi_ctxt->id);
++					break;
++				}
++				port_num = PORT_NUM_FROM_LINK(
++					(msg[5]&INTER_DOMAIN_LINK_MASK)
++					>> INTER_DOMAIN_LINK_SHIFT);
++
++				if (unlikely(port_num >=
++					     nhi_ctxt->num_ports)) {
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s:controller id 0x%x invalid port %u in inter domain approve message\n",
++						__func__, nhi_ctxt->id,
++						port_num);
++					break;
++				}
++
++				port = &(nhi_ctxt->net_devices[port_num]);
++				mutex_lock(&port->state_mutex);
++				port->medium_sts = MEDIUM_CONNECTED;
++
++				if (likely(port->net_dev != NULL))
++					negotiation_events(port->net_dev,
++							   MEDIUM_CONNECTED);
++				else
++					dev_err(&nhi_ctxt->pdev->dev,
++						"%s:controller id 0x%x port %u in inter domain approve message was not initialized\n",
++						__func__, nhi_ctxt->id,
++						port_num);
++				mutex_unlock(&port->state_mutex);
++			}
++			break;
++
++		default:
++			dev_warn(&nhi_ctxt->pdev->dev,
++				 "%s: controller id 0x%x pdf %u isn't handled/expected\n",
++				 __func__, nhi_ctxt->id, pdf);
++			break;
++		}
++
++		if (send_event)
++			nhi_genl_send_msg(nhi_ctxt, pdf, msg, msg_len);
++
++		/* set the descriptor for another receive */
++		rx_desc->attributes = cpu_to_le32(DESC_ATTR_REQ_STS |
++						  DESC_ATTR_INT_EN);
++		rx_desc->time = 0;
++	}
++
++	/* free the descriptors for more receive */
++	prod_cons &= ~REG_RING_CONS_MASK;
++	prod_cons |= (cons << REG_RING_CONS_SHIFT) & REG_RING_CONS_MASK;
++	iowrite32(prod_cons, reg);
++
++	if (!nhi_ctxt->d0_exit) {
++		unsigned long flags;
++
++		spin_lock_irqsave(&nhi_ctxt->lock, flags);
++		/* enable RX interrupt */
++		iowrite32(ioread32(nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE)
++			  | REG_RING_INT_RX_PROCESSED(TBT_ICM_RING_NUM,
++						      nhi_ctxt->num_paths),
++			  nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&nhi_ctxt->lock, flags);
++	}
++
++out:
++	TRACE_FUNC_EXIT();
++}
++
++static irqreturn_t nhi_icm_ring_rx_msix(int __always_unused irq, void *data)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt = data;
++	unsigned long flags;
++
++	TRACE_FUNC_ENTRY();
++
++	spin_lock_irqsave(&nhi_ctxt->lock, flags);
++	/*
++	 * disable RX interrupt
++	 * We like to allow interrupt mitigation until the work item
++	 * will be completed.
++	 */
++	iowrite32(ioread32(nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE) &
++		  ~(REG_RING_INT_RX_PROCESSED(TBT_ICM_RING_NUM,
++					      nhi_ctxt->num_paths)),
++		  nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++	spin_unlock_irqrestore(&nhi_ctxt->lock, flags);
++
++	schedule_work(&nhi_ctxt->icm_msgs_work);
++
++	TRACE_FUNC_EXIT();
++
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t nhi_msi(int __always_unused irq, void *data)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt = data;
++	u32 isr0, isr1;
++	irqreturn_t ret = IRQ_HANDLED;
++
++	TRACE_FUNC_ENTRY();
++
++	/* clear on read */
++	isr0 = ioread32(nhi_ctxt->iobase + REG_RING_NOTIFY_BASE);
++	isr1 = ioread32(nhi_ctxt->iobase + REG_RING_NOTIFY_BASE +
++							REG_RING_NOTIFY_STEP);
++	if (likely(isr0 || isr1)) {
++		u32 imr0, imr1;
++		unsigned long flags;
++		int i;
++
++		spin_lock_irqsave(&nhi_ctxt->lock, flags);
++
++		imr0 = ioread32(nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++		imr1 = ioread32(nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE +
++						REG_RING_INTERRUPT_STEP);
++		/* disable the arrived interrupts */
++		iowrite32(imr0 & ~isr0,
++			  nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++		iowrite32(imr1 & ~isr1,
++			  nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE +
++						REG_RING_INTERRUPT_STEP);
++
++		spin_unlock_irqrestore(&nhi_ctxt->lock, flags);
++
++		for (i = 0; i < nhi_ctxt->num_ports; ++i) {
++			struct net_device *net_dev =
++					nhi_ctxt->net_devices[i].net_dev;
++			if (net_dev) {
++				u8 path =
++					PATH_FROM_PORT(nhi_ctxt->num_paths, i);
++				if (isr0 & REG_RING_INT_RX_PROCESSED(
++						path, nhi_ctxt->num_paths))
++					tbt_net_rx_msi(net_dev);
++				if (isr0 & REG_RING_INT_TX_PROCESSED(path))
++					tbt_net_tx_msi(net_dev);
++			}
++		}
++
++		if (isr0 & REG_RING_INT_RX_PROCESSED(TBT_ICM_RING_NUM,
++						     nhi_ctxt->num_paths))
++			schedule_work(&nhi_ctxt->icm_msgs_work);
++	} else
++		ret = IRQ_NONE;
++
++	TRACE_FUNC_EXIT();
++
++	return ret;
++}
++
++/**
++ * nhi_set_int_vec - Mapping of the MSIX vector entry to the ring
++ * @nhi_ctxt: contains data on NHI controller
++ * @path: ring to be mapped
++ * @msix_msg_id: msix entry to be mapped
++ */
++static inline void nhi_set_int_vec(struct tbt_nhi_ctxt *nhi_ctxt, u32 path,
++				   u8 msix_msg_id)
++{
++	void __iomem *reg;
++	u32 step, shift, ivr;
++
++	if (msix_msg_id % 2)
++		path += nhi_ctxt->num_paths;
++
++	step = path / REG_INT_VEC_ALLOC_PER_REG;
++	shift = (path % REG_INT_VEC_ALLOC_PER_REG) *
++		REG_INT_VEC_ALLOC_FIELD_BITS;
++	reg = nhi_ctxt->iobase + REG_INT_VEC_ALLOC_BASE +
++					(step * REG_INT_VEC_ALLOC_STEP);
++	ivr = ioread32(reg) & ~(REG_INT_VEC_ALLOC_FIELD_MASK << shift);
++	iowrite32(ivr | (msix_msg_id << shift), reg);
++}
++
++int __init nhi_genl_register(void)
++{
++	return genl_register_family_with_ops(&nhi_genl_family, nhi_ops);
++}
++
++int nhi_genl_unregister(void)
++{
++	return genl_unregister_family(&nhi_genl_family);
++}
++
++int nhi_suspend(struct device *dev) __releases(&nhi_ctxt->send_sem)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt = pci_get_drvdata(to_pci_dev(dev));
++	void __iomem *rx_reg, *tx_reg;
++	u32 rx_reg_val, tx_reg_val;
++	int i;
++
++	if (!nhi_ctxt->icm_enabled)
++		return 0;
++
++	TRACE_FUNC_ENTRY();
++
++	for (i = 0; i < nhi_ctxt->num_ports; i++) {
++		struct port_net_dev *port = &(nhi_ctxt->net_devices[i]);
++
++		mutex_lock(&port->state_mutex);
++		port->medium_sts = MEDIUM_DISCONNECTED;
++		if (port->net_dev)
++			negotiation_events(port->net_dev, MEDIUM_DISCONNECTED);
++		mutex_unlock(&port->state_mutex);
++	}
++
++	/* must be after negotiation_events, since messages might be sent */
++	nhi_ctxt->d0_exit = true;
++
++	rx_reg = nhi_ctxt->iobase + REG_RX_OPTIONS_BASE +
++		 (TBT_ICM_RING_NUM * REG_OPTS_STEP);
++	rx_reg_val = ioread32(rx_reg) & ~REG_OPTS_E2E_EN;
++	tx_reg = nhi_ctxt->iobase + REG_TX_OPTIONS_BASE +
++		 (TBT_ICM_RING_NUM * REG_OPTS_STEP);
++	tx_reg_val = ioread32(tx_reg) & ~REG_OPTS_E2E_EN;
++	/* disable RX flow control  */
++	iowrite32(rx_reg_val, rx_reg);
++	wmb(); /* TX should be after RX */
++	/* disable TX flow control  */
++	iowrite32(tx_reg_val, tx_reg);
++	wmb(); /* rings disable should be after disabling flow control */
++	/* disable RX ring  */
++	iowrite32(rx_reg_val & ~REG_OPTS_VALID, rx_reg);
++	wmb(); /* make sure disable RX ring is done */
++
++	mutex_lock(&nhi_ctxt->d0_exit_mailbox_mutex);
++	mutex_lock(&nhi_ctxt->d0_exit_send_mutex);
++
++	cancel_work_sync(&nhi_ctxt->icm_msgs_work);
++
++	if (nhi_ctxt->wait_for_icm_resp) {
++		nhi_ctxt->wait_for_icm_resp = false;
++		nhi_ctxt->ignore_icm_resp = false;
++		up(&nhi_ctxt->send_sem);
++	}
++
++	mutex_unlock(&nhi_ctxt->d0_exit_send_mutex);
++	mutex_unlock(&nhi_ctxt->d0_exit_mailbox_mutex);
++
++	/* wait for all TX to finish  */
++	usleep_range(5 * USEC_PER_MSEC, 7 * USEC_PER_MSEC);
++
++	/* disable all interrupts */
++	iowrite32(0, nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++	/* disable TX ring  */
++	iowrite32(tx_reg_val & ~REG_OPTS_VALID, tx_reg);
++
++	TRACE_FUNC_EXIT();
++	return 0;
++}
++
++int nhi_resume(struct device *dev) __acquires(&nhi_ctxt->send_sem)
++{
++	u64 phys;
++	struct tbt_nhi_ctxt *nhi_ctxt = pci_get_drvdata(to_pci_dev(dev));
++	void __iomem *iobase = nhi_ctxt->iobase;
++	void __iomem *reg;
++	int i;
++
++	if (!nhi_ctxt->icm_enabled)
++		return 0;
++
++	TRACE_FUNC_ENTRY();
++
++	if (nhi_ctxt->msix_entries) {
++		iowrite32(ioread32(iobase + REG_DMA_MISC) |
++						REG_DMA_MISC_INT_AUTO_CLEAR,
++			  iobase + REG_DMA_MISC);
++		/*
++		 * vector #0, which is TX complete to ICM,
++		 * isn't been used currently
++		 */
++		nhi_set_int_vec(nhi_ctxt, 0, 1);
++
++		for (i = 2; i < nhi_ctxt->num_vectors; i++)
++			nhi_set_int_vec(nhi_ctxt, nhi_ctxt->num_paths - (i/2),
++					i);
++	}
++
++	/* configure TX descriptors */
++	for (i = 0, phys = nhi_ctxt->icm_ring_shared_mem_dma_addr;
++	     i < TBT_ICM_RING_NUM_TX_BUFS;
++	     i++, phys += TBT_ICM_RING_MAX_FRAME_SIZE) {
++		nhi_ctxt->icm_ring_shared_mem->tx_buf_desc[i].phys =
++							cpu_to_le64(phys);
++		nhi_ctxt->icm_ring_shared_mem->tx_buf_desc[i].attributes =
++					cpu_to_le32(DESC_ATTR_REQ_STS);
++	}
++	/* configure RX descriptors */
++	for (i = 0;
++	     i < TBT_ICM_RING_NUM_RX_BUFS;
++	     i++, phys += TBT_ICM_RING_MAX_FRAME_SIZE) {
++		nhi_ctxt->icm_ring_shared_mem->rx_buf_desc[i].phys =
++							cpu_to_le64(phys);
++		nhi_ctxt->icm_ring_shared_mem->rx_buf_desc[i].attributes =
++					cpu_to_le32(DESC_ATTR_REQ_STS |
++						    DESC_ATTR_INT_EN);
++	}
++
++	/* configure throttling rate for interrupts */
++	for (i = 0, reg = iobase + REG_INT_THROTTLING_RATE;
++	     i < NUM_INT_VECTORS;
++	     i++, reg += REG_INT_THROTTLING_RATE_STEP) {
++		iowrite32(USEC_TO_256_NSECS(128), reg);
++	}
++
++	/* configure TX for ICM ring */
++	reg = iobase + REG_TX_RING_BASE + (TBT_ICM_RING_NUM * REG_RING_STEP);
++	phys = nhi_ctxt->icm_ring_shared_mem_dma_addr +
++		offsetof(struct tbt_icm_ring_shared_memory, tx_buf_desc);
++	iowrite32(phys, reg + REG_RING_PHYS_LO_OFFSET);
++	iowrite32(phys >> 32, reg + REG_RING_PHYS_HI_OFFSET);
++	iowrite32((TBT_ICM_RING_NUM_TX_BUFS << REG_RING_SIZE_SHIFT) &
++			REG_RING_SIZE_MASK,
++		  reg + REG_RING_SIZE_OFFSET);
++
++	reg = iobase + REG_TX_OPTIONS_BASE + (TBT_ICM_RING_NUM*REG_OPTS_STEP);
++	iowrite32(REG_OPTS_RAW | REG_OPTS_VALID, reg);
++
++	/* configure RX for ICM ring */
++	reg = iobase + REG_RX_RING_BASE + (TBT_ICM_RING_NUM * REG_RING_STEP);
++	phys = nhi_ctxt->icm_ring_shared_mem_dma_addr +
++		offsetof(struct tbt_icm_ring_shared_memory, rx_buf_desc);
++	iowrite32(phys, reg + REG_RING_PHYS_LO_OFFSET);
++	iowrite32(phys >> 32, reg + REG_RING_PHYS_HI_OFFSET);
++	iowrite32(((TBT_ICM_RING_NUM_RX_BUFS << REG_RING_SIZE_SHIFT) &
++			REG_RING_SIZE_MASK) |
++		  ((TBT_ICM_RING_MAX_FRAME_SIZE << REG_RING_BUF_SIZE_SHIFT) &
++			REG_RING_BUF_SIZE_MASK),
++		  reg + REG_RING_SIZE_OFFSET);
++	iowrite32(((TBT_ICM_RING_NUM_RX_BUFS - 1) << REG_RING_CONS_SHIFT) &
++			REG_RING_CONS_MASK,
++		  reg + REG_RING_CONS_PROD_OFFSET);
++
++	reg = iobase + REG_RX_OPTIONS_BASE + (TBT_ICM_RING_NUM*REG_OPTS_STEP);
++	iowrite32(REG_OPTS_RAW | REG_OPTS_VALID, reg);
++
++	/* enable RX interrupt */
++	iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) |
++		  REG_RING_INT_RX_PROCESSED(TBT_ICM_RING_NUM,
++					    nhi_ctxt->num_paths),
++		  iobase + REG_RING_INTERRUPT_BASE);
++
++	dev_info(dev, "Thunderbolt controller id 0x%x is ready\n",
++		 nhi_ctxt->id);
++
++	if (likely((atomic_read(&subscribers) > 0) &&
++		   nhi_nvm_authenticated(nhi_ctxt))) {
++		int res = down_interruptible(&nhi_ctxt->send_sem);
++
++		nhi_ctxt->d0_exit = false;
++		if (!mutex_lock_interruptible(&nhi_ctxt->d0_exit_send_mutex)) {
++			wmb(); /* interrupts should be enabled before send */
++			nhi_send_driver_ready_command(nhi_ctxt);
++			mutex_unlock(&nhi_ctxt->d0_exit_send_mutex);
++		} else if (!res)
++			up(&nhi_ctxt->send_sem);
++	} else
++		nhi_ctxt->d0_exit = false;
++
++	TRACE_FUNC_EXIT();
++	return 0;
++}
++
++void icm_nhi_shutdown(struct pci_dev *pdev)
++{
++	TRACE_FUNC_ENTRY();
++	nhi_suspend(&pdev->dev);
++	TRACE_FUNC_EXIT();
++}
++
++void icm_nhi_deinit(struct pci_dev *pdev)
++{
++	struct tbt_nhi_ctxt *nhi_ctxt = pci_get_drvdata(pdev);
++	int i;
++
++	TRACE_FUNC_ENTRY();
++
++	nhi_suspend(&pdev->dev);
++
++	for (i = 0; i < nhi_ctxt->num_ports; i++) {
++		mutex_lock(&nhi_ctxt->net_devices[i].state_mutex);
++		if (nhi_ctxt->net_devices[i].net_dev) {
++			nhi_dealloc_etherdev(nhi_ctxt->net_devices[i].net_dev);
++			nhi_ctxt->net_devices[i].net_dev = NULL;
++		}
++		mutex_unlock(&nhi_ctxt->net_devices[i].state_mutex);
++	}
++
++	if (nhi_ctxt->net_workqueue)
++		destroy_workqueue(nhi_ctxt->net_workqueue);
++
++	/*
++	 * deallocate irq for msix or msi
++	 */
++	if (likely(nhi_ctxt->msix_entries)) {
++		devm_free_irq(&pdev->dev, nhi_ctxt->msix_entries[1].vector,
++			      nhi_ctxt);
++		pci_disable_msix(pdev);
++		devm_kfree(&pdev->dev, nhi_ctxt->msix_entries);
++	} else {
++		devm_free_irq(&pdev->dev, pdev->irq, nhi_ctxt);
++		pci_disable_msi(pdev);
++	}
++	/*
++	 * remove controller from the controllers list
++	 */
++	down_write(&controllers_list_rwsem);
++	list_del(&nhi_ctxt->node);
++	up_write(&controllers_list_rwsem);
++
++	nhi_mailbox(
++		nhi_ctxt,
++		((DRIVER_UNLOADS_AND_DISCONNECT_INTER_DOMAIN_PATHS_COMMAND_CODE
++		  << REG_INMAIL_CMD_CMD_SHIFT) &
++		 REG_INMAIL_CMD_CMD_MASK) |
++		REG_INMAIL_CMD_REQUEST,
++		true);
++
++	usleep_range(1 * USEC_PER_MSEC, 5 * USEC_PER_MSEC);
++	iowrite32(1, nhi_ctxt->iobase + REG_HOST_INTERFACE_RST);
++
++	dmam_free_coherent(&pdev->dev,
++			   sizeof(*nhi_ctxt->icm_ring_shared_mem),
++			   nhi_ctxt->icm_ring_shared_mem,
++			   nhi_ctxt->icm_ring_shared_mem_dma_addr);
++
++	mutex_destroy(&nhi_ctxt->d0_exit_send_mutex);
++	mutex_destroy(&nhi_ctxt->d0_exit_mailbox_mutex);
++	mutex_destroy(&nhi_ctxt->mailbox_mutex);
++	for (i = 0; i < nhi_ctxt->num_ports; i++)
++		mutex_destroy(&(nhi_ctxt->net_devices[i].state_mutex));
++
++	devm_kfree(&pdev->dev, nhi_ctxt->net_devices);
++	devm_kfree(&pdev->dev, nhi_ctxt);
++
++	TRACE_FUNC_EXIT();
++}
++
++int icm_nhi_init(struct pci_dev *pdev,
++		 const struct pci_device_id *id,
++		 void __iomem *iobase)
++{
++	int i;
++	int res;
++	struct tbt_nhi_ctxt *nhi_ctxt;
++	bool enable_msi = false;
++
++	BUILD_BUG_ON(offsetof(struct tbt_nhi_ctxt, icm_enabled) != 0);
++
++	TRACE_FUNC_ENTRY();
++
++	nhi_ctxt = devm_kzalloc(&pdev->dev,
++				sizeof(*nhi_ctxt),
++				GFP_KERNEL);
++	if (!nhi_ctxt) {
++		dev_err(&pdev->dev, "devm_kzalloc failed, aborting\n");
++		res = -ENOMEM;
++		goto out;
++	}
++
++	nhi_ctxt->pdev = pdev;
++	nhi_ctxt->iobase = iobase;
++	nhi_ctxt->icm_enabled = true;
++	nhi_ctxt->id = (PCI_DEVID(pdev->bus->number, pdev->devfn) << 16) |
++								id->device;
++	/*
++	 * Number of paths represents the number of rings available for
++	 * the controller.
++	 */
++	nhi_ctxt->num_paths = ioread32(iobase + REG_HOP_COUNT) &
++						REG_HOP_COUNT_TOTAL_PATHS_MASK;
++
++	nhi_ctxt->nvm_auth_on_boot = DEVICE_DATA_NVM_AUTH_ON_BOOT(
++							id->driver_data);
++
++	nhi_ctxt->dma_port = DEVICE_DATA_DMA_PORT(id->driver_data);
++	/*
++	 * Number of ports in the controller
++	 */
++	nhi_ctxt->num_ports = DEVICE_DATA_NUM_PORTS(id->driver_data);
++	nhi_ctxt->nvm_ver_offset = DEVICE_DATA_NVM_VER_OFFSET(id->driver_data);
++
++	mutex_init(&nhi_ctxt->d0_exit_send_mutex);
++	mutex_init(&nhi_ctxt->d0_exit_mailbox_mutex);
++	mutex_init(&nhi_ctxt->mailbox_mutex);
++
++	sema_init(&nhi_ctxt->send_sem, 1);
++
++	INIT_WORK(&nhi_ctxt->icm_msgs_work, nhi_msgs_from_icm);
++
++	spin_lock_init(&nhi_ctxt->lock);
++
++	nhi_ctxt->net_devices = devm_kcalloc(&pdev->dev,
++					     nhi_ctxt->num_ports,
++					     sizeof(struct port_net_dev),
++					     GFP_KERNEL);
++	if (!nhi_ctxt->net_devices) {
++		dev_err(&pdev->dev, "devm_kzalloc failed, aborting\n");
++		res = -ENOMEM;
++		goto out;
++	}
++	for (i = 0; i < nhi_ctxt->num_ports; i++)
++		mutex_init(&(nhi_ctxt->net_devices[i].state_mutex));
++
++	/*
++	 * allocating RX and TX vectors for ICM and per port
++	 * for thunderbolt networking.
++	 * The mapping of the vector is carried out by
++	 * nhi_set_int_vec and looks like:
++	 * 0=tx icm, 1=rx icm, 2=tx data port 0,
++	 * 3=rx data port 0...
++	 */
++	nhi_ctxt->num_vectors = (1 + nhi_ctxt->num_ports) * 2;
++	nhi_ctxt->msix_entries = devm_kcalloc(&pdev->dev,
++					      nhi_ctxt->num_vectors,
++					      sizeof(struct msix_entry),
++					      GFP_KERNEL);
++	if (likely(nhi_ctxt->msix_entries)) {
++		for (i = 0; i < nhi_ctxt->num_vectors; i++)
++			nhi_ctxt->msix_entries[i].entry = i;
++		res = pci_enable_msix_exact(pdev,
++					    nhi_ctxt->msix_entries,
++					    nhi_ctxt->num_vectors);
++
++		if (res ||
++		    /*
++		     * Allocating ICM RX only.
++		     * vector #0, which is TX complete to ICM,
++		     * isn't been used currently
++		     */
++		    devm_request_irq(&pdev->dev,
++				     nhi_ctxt->msix_entries[1].vector,
++				     nhi_icm_ring_rx_msix, 0, pci_name(pdev),
++				     nhi_ctxt)) {
++			devm_kfree(&pdev->dev, nhi_ctxt->msix_entries);
++			nhi_ctxt->msix_entries = NULL;
++			enable_msi = true;
++		}
++	} else
++		enable_msi = true;
++	/*
++	 * In case allocation didn't succeed, use msi instead of msix
++	 */
++	if (enable_msi) {
++		res = pci_enable_msi(pdev);
++		if (res) {
++			dev_err(&pdev->dev, "cannot enable MSI, aborting\n");
++			goto out;
++		}
++		res = devm_request_irq(&pdev->dev, pdev->irq, nhi_msi, 0,
++				       pci_name(pdev), nhi_ctxt);
++		if (res) {
++			dev_err(&pdev->dev,
++				"request_irq failed %d, aborting\n", res);
++			goto out;
++		}
++	}
++	/*
++	 * try to work with address space of 64 bits.
++	 * In case this doesn't work, work with 32 bits.
++	 */
++	if (!dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64)))
++		nhi_ctxt->pci_using_dac = true;
++	else {
++		res = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
++		if (res) {
++			dev_err(&pdev->dev,
++				"No suitable DMA available, aborting\n");
++			goto out;
++		}
++	}
++
++	BUILD_BUG_ON(sizeof(struct tbt_buf_desc) != 16);
++	BUILD_BUG_ON(sizeof(struct tbt_icm_ring_shared_memory) > PAGE_SIZE);
++	nhi_ctxt->icm_ring_shared_mem = dmam_alloc_coherent(
++			&pdev->dev, sizeof(*nhi_ctxt->icm_ring_shared_mem),
++			&nhi_ctxt->icm_ring_shared_mem_dma_addr,
++			GFP_KERNEL | __GFP_ZERO);
++	if (nhi_ctxt->icm_ring_shared_mem == NULL) {
++		dev_err(&pdev->dev, "dma_zalloc_coherent failed, aborting\n");
++		res = -ENOMEM;
++		goto out;
++	}
++
++	nhi_ctxt->net_workqueue = create_singlethread_workqueue(DRV_NAME);
++	if (!nhi_ctxt->net_workqueue) {
++		dev_err(&pdev->dev, "create_singlethread_workqueue failed, aborting\n");
++		res = -ENOMEM;
++		goto out;
++	}
++
++	pci_set_master(pdev);
++	pci_set_drvdata(pdev, nhi_ctxt);
++
++	nhi_resume(&pdev->dev);
++	/*
++	 * Add the new controller at the end of the list
++	 */
++	down_write(&controllers_list_rwsem);
++	list_add_tail(&nhi_ctxt->node, &controllers_list);
++	up_write(&controllers_list_rwsem);
++
++out:
++	TRACE_FUNC_EXIT();
++	return res;
++}
+diff -uprN linux/drivers/thunderbolt/icm_nhi.h src/icm_nhi.h
+--- linux/drivers/thunderbolt/icm_nhi.h	1970-01-01 02:00:00.000000000 +0200
++++ src/icm_nhi.h	2015-02-24 14:20:56.000000000 +0200
+@@ -0,0 +1,51 @@
++/*******************************************************************************
++ *
++ * Intel Thunderbolt(TM) driver
++ * Copyright(c) 2014 - 2015 Intel Corporation.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ * The full GNU General Public License is included in this distribution in
++ * the file called "COPYING".
++ *
++ * Contact Information:
++ * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
++ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
++ *
++ ******************************************************************************/
++
++#ifndef ICM_NHI_H_
++#define ICM_NHI_H_
++
++#include <linux/pci.h>
++
++#define DEVICE_DATA(num_ports, dma_port, nvm_ver_offset, nvm_auth_on_boot) \
++	((num_ports) | ((dma_port) << 4) | ((nvm_ver_offset) << 10) | \
++	 ((nvm_auth_on_boot) << 22))
++#define DEVICE_DATA_ICM_CAPABLITY(driver_data) ((driver_data) != 0)
++#define DEVICE_DATA_NUM_PORTS(device_data) ((device_data) & 0xf)
++#define DEVICE_DATA_DMA_PORT(device_data) (((device_data) >> 4) & 0x3f)
++#define DEVICE_DATA_NVM_VER_OFFSET(device_data) (((device_data) >> 10) & 0xfff)
++#define DEVICE_DATA_NVM_AUTH_ON_BOOT(device_data) (((device_data) >> 22) & 0x1)
++
++int nhi_genl_register(void);
++int nhi_genl_unregister(void);
++int icm_nhi_init(struct pci_dev *pdev,
++		 const struct pci_device_id *id,
++		 void __iomem *iobase);
++void icm_nhi_deinit(struct pci_dev *pdev);
++int nhi_suspend(struct device *dev) __releases(&nhi_ctxt->send_sem);
++int nhi_resume(struct device *dev) __acquires(&nhi_ctxt->send_sem);
++void icm_nhi_shutdown(struct pci_dev *pdev);
++
++#endif
+diff -uprN linux/drivers/thunderbolt/net.c src/net.c
+--- linux/drivers/thunderbolt/net.c	1970-01-01 02:00:00.000000000 +0200
++++ src/net.c	2015-02-24 14:20:56.000000000 +0200
+@@ -0,0 +1,2311 @@
++/*******************************************************************************
++ *
++ * Intel Thunderbolt(TM) driver
++ * Copyright(c) 2014 - 2015 Intel Corporation.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ * The full GNU General Public License is included in this distribution in
++ * the file called "COPYING".
++ *
++ * Contact Information:
++ * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
++ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
++ *
++ ******************************************************************************/
++
++#include <linux/module.h>
++#include <linux/etherdevice.h>
++#include <linux/crc32.h>
++#include <linux/prefetch.h>
++#include <linux/highmem.h>
++#include <linux/if_vlan.h>
++#include <linux/hash.h>
++#include <net/ip6_checksum.h>
++#include "net.h"
++#include "nhi_regs.h"
++
++#define DEFAULT_MSG_ENABLE (NETIF_MSG_PROBE | NETIF_MSG_LINK | NETIF_MSG_IFUP)
++static int debug = -1;
++module_param(debug, int, 0);
++MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
++
++#define TBT_NET_RX_HDR_SIZE 256
++
++#define NUM_TX_LOGIN_RETRIES 60
++
++#define APPLE_THUNDERBOLT_IP_PROTOCOL_REVISION 1
++
++#define LOGIN_TX_PATH 0xf
++
++#define TBT_NET_MTU (64 * 1024)
++
++/* Number of Rx buffers we bundle into one write to the hardware */
++#define TBT_NET_RX_BUFFER_WRITE	16
++
++#define TBT_NET_MULTICAST_HASH_TABLE_SIZE 1024
++#define TBT_NET_ETHER_ADDR_HASH(addr) (((addr[4] >> 4) | (addr[5] << 4)) % \
++				       TBT_NET_MULTICAST_HASH_TABLE_SIZE)
++
++#define BITS_PER_U32 (sizeof(u32) * BITS_PER_BYTE)
++
++#define TBT_NET_NUM_TX_BUFS 256
++#define TBT_NET_NUM_RX_BUFS 256
++#define TBT_NET_SIZE_TOTAL_DESCS ((TBT_NET_NUM_TX_BUFS + TBT_NET_NUM_RX_BUFS) \
++				  * sizeof(struct tbt_buf_desc))
++
++
++#define TBT_NUM_FRAMES_PER_PAGE (PAGE_SIZE / TBT_RING_MAX_FRAME_SIZE)
++
++#define TBT_NUM_BUFS_BETWEEN(idx1, idx2, num_bufs) \
++	(((num_bufs) - 1) - \
++	 ((((idx1) - (idx2)) + (num_bufs)) & ((num_bufs) - 1)))
++
++#define TX_WAKE_THRESHOLD (2 * DIV_ROUND_UP(TBT_NET_MTU, \
++					    TBT_RING_MAX_FRAME_DATA_SIZE))
++
++
++/* E2E workaround */
++#define TBT_EXIST_BUT_UNUSED_HOPID 2
++
++enum tbt_net_frame_pdf {
++	PDF_TBT_NET_MIDDLE_FRAME,
++	PDF_TBT_NET_START_OF_FRAME,
++	PDF_TBT_NET_END_OF_FRAME,
++};
++
++struct thunderbolt_ip_login {
++	struct thunderbolt_ip_header header;
++	__be32 protocol_revision;
++	__be32 transmit_path;
++	__be32 reserved[4];
++	__be32 crc;
++};
++
++struct thunderbolt_ip_login_response {
++	struct thunderbolt_ip_header header;
++	__be32 status;
++	__be32 receiver_mac_address[2];
++	__be32 receiver_mac_address_length;
++	__be32 reserved[4];
++	__be32 crc;
++};
++
++struct thunderbolt_ip_logout {
++	struct thunderbolt_ip_header header;
++	__be32 crc;
++};
++
++struct thunderbolt_ip_status {
++	struct thunderbolt_ip_header header;
++	__be32 status;
++	__be32 crc;
++};
++
++struct approve_inter_domain_connection_command {
++	__be32 req_code;
++	__be32 attributes;
++#define AIDC_ATTR_LINK_SHIFT	16
++#define AIDC_ATTR_LINK_MASK	GENMASK(18, AIDC_ATTR_LINK_SHIFT)
++#define AIDC_ATTR_DEPTH_SHIFT	20
++#define AIDC_ATTR_DEPTH_MASK	GENMASK(23, AIDC_ATTR_DEPTH_SHIFT)
++	unique_id_be connected_inter_domain_remote_unique_id;
++	__be16 transmit_ring_number;
++	__be16 transmit_path;
++	__be16 receive_ring_number;
++	__be16 receive_path;
++	__be32 crc;
++
++};
++
++struct tbt_frame_header {
++	/* size of the data with the frame*/
++	__le32 frame_size;
++	/* running index on the frames*/
++	__le32 frame_index;
++	/* how many frames assembles a full packet*/
++	__le32 frame_count;
++};
++
++enum neg_event {
++	RECEIVE_LOGOUT = NUM_MEDIUM_STATUSES,
++	RECEIVE_LOGIN_RESPONSE,
++	RECEIVE_LOGIN,
++	NUM_NEG_EVENTS
++};
++
++enum frame_status {
++	GOOD_FRAME,
++	GOOD_AS_FIRST_FRAME,
++	GOOD_AS_FIRST_MULTICAST_FRAME,
++	FRAME_NOT_READY,
++	FRAME_ERROR,
++};
++
++enum packet_filter {
++	/* all multicast MAC addresses */
++	PACKET_TYPE_ALL_MULTICAST,
++	/* all types of MAC addresses: multicast, unicast and broadcast */
++	PACKET_TYPE_PROMISCUOUS,
++	/* all unicast MAC addresses */
++	PACKET_TYPE_UNICAST_PROMISCUOUS,
++};
++
++struct tbt_net_stats {
++	u64 tx_packets;
++	u64 tx_bytes;
++	u64 tx_errors;
++	u64 rx_packets;
++	u64 rx_bytes;
++	u64 rx_length_errors;
++	u64 rx_over_errors;
++	u64 rx_crc_errors;
++	u64 rx_missed_errors;
++	u64 multicast;
++};
++
++static const char tbt_net_gstrings_stats[][ETH_GSTRING_LEN] = {
++	"tx_packets",
++	"tx_bytes",
++	"tx_errors",
++	"rx_packets",
++	"rx_bytes",
++	"rx_length_errors",
++	"rx_over_errors",
++	"rx_crc_errors",
++	"rx_missed_errors",
++	"multicast",
++};
++
++struct tbt_buffer {
++	dma_addr_t dma;
++	union {
++		struct tbt_frame_header *hdr;
++		struct page *page;
++	};
++	u32 page_offset;
++};
++
++struct tbt_desc_ring {
++	/* pointer to the descriptor ring memory */
++	struct tbt_buf_desc *desc;
++	/* physical address of the descriptor ring */
++	dma_addr_t dma;
++	/* array of buffer structs */
++	struct tbt_buffer *buffers;
++	/* last descriptor that was associated with a buffer */
++	u16 last_allocated;
++	/* next descriptor to check for DD status bit */
++	u16 next_to_clean;
++};
++
++struct tbt_port {
++	struct tbt_nhi_ctxt *nhi_ctxt;
++	struct net_device *net_dev;
++	struct napi_struct napi;
++	struct delayed_work login_retry_work;
++	struct work_struct login_response_work;
++	struct work_struct logout_work;
++	struct work_struct status_reply_work;
++	struct work_struct approve_inter_domain_work;
++	struct route_string route_str;
++	unique_id inter_domain_local_unique_id;
++	unique_id inter_domain_remote_unique_id;
++	u32 command_id;
++	u16 negotiation_status;
++	u16 msg_enable;
++	u8 seq_num;
++	u8 login_retry_count;
++	u8 local_depth;
++	u8 num;
++	u8 local_path;
++	u8 transmit_path;
++	struct tbt_desc_ring tx_ring ____cacheline_aligned_in_smp;
++	struct tbt_desc_ring rx_ring;
++	struct tbt_net_stats stats;
++	u32 packet_filters;
++	/* hash table of 1024 boolean entries with hashing of
++	 * the multicast address
++	*/
++	u32 multicast_hash_table[DIV_ROUND_UP(
++					TBT_NET_MULTICAST_HASH_TABLE_SIZE,
++					BITS_PER_U32)];
++};
++
++static void tbt_net_tear_down(struct net_device *net_dev, bool send_logout);
++
++void tbt_net_tx_msi(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	void __iomem *iobase = port->nhi_ctxt->iobase;
++	u32 prod_cons, prod, cons;
++
++	prod_cons = ioread32(iobase + REG_TX_RING_BASE +
++			     REG_RING_CONS_PROD_OFFSET +
++			     (port->local_path * REG_RING_STEP));
++	prod = (prod_cons & REG_RING_PROD_MASK) >> REG_RING_PROD_SHIFT;
++	cons = (prod_cons & REG_RING_CONS_MASK) >> REG_RING_CONS_SHIFT;
++	if ((prod >= TBT_NET_NUM_TX_BUFS) || (cons >= TBT_NET_NUM_TX_BUFS))
++		return;
++
++	if (TBT_NUM_BUFS_BETWEEN(prod, cons, TBT_NET_NUM_TX_BUFS) >=
++							TX_WAKE_THRESHOLD)
++		netif_wake_queue(port->net_dev);
++	else {
++		unsigned long flags;
++
++		spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++		/* enable TX interrupt */
++		iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) |
++			  REG_RING_INT_TX_PROCESSED(port->local_path),
++			  iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++	}
++}
++
++static irqreturn_t tbt_net_tx_msix(int __always_unused irq, void *data)
++{
++	struct tbt_port *port = data;
++	void __iomem *iobase = port->nhi_ctxt->iobase;
++	u32 prod_cons, prod, cons;
++
++	prod_cons = ioread32(iobase + REG_TX_RING_BASE +
++			     REG_RING_CONS_PROD_OFFSET +
++			     (port->local_path * REG_RING_STEP));
++	prod = (prod_cons & REG_RING_PROD_MASK) >> REG_RING_PROD_SHIFT;
++	cons = (prod_cons & REG_RING_CONS_MASK) >> REG_RING_CONS_SHIFT;
++	if ((prod < TBT_NET_NUM_TX_BUFS) && (cons < TBT_NET_NUM_TX_BUFS) &&
++	    (TBT_NUM_BUFS_BETWEEN(prod, cons, TBT_NET_NUM_TX_BUFS) >=
++							TX_WAKE_THRESHOLD)) {
++		unsigned long flags;
++
++		spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++		/* disable TX interrupt */
++		iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) &
++			  ~(REG_RING_INT_TX_PROCESSED(port->local_path)),
++			  iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++
++		netif_wake_queue(port->net_dev);
++	}
++
++	return IRQ_HANDLED;
++}
++
++void tbt_net_rx_msi(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	napi_schedule(&port->napi);
++}
++
++static irqreturn_t tbt_net_rx_msix(int __always_unused irq, void *data)
++{
++	struct tbt_port *port = data;
++
++	if (likely(napi_schedule_prep(&port->napi))) {
++		struct tbt_nhi_ctxt *nhi_ctx = port->nhi_ctxt;
++		unsigned long flags;
++
++		spin_lock_irqsave(&nhi_ctx->lock, flags);
++		/* disable RX interrupt */
++		iowrite32(ioread32(nhi_ctx->iobase + REG_RING_INTERRUPT_BASE) &
++			  ~(REG_RING_INT_RX_PROCESSED(port->local_path,
++						      nhi_ctx->num_paths)),
++			  nhi_ctx->iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&nhi_ctx->lock, flags);
++
++		__napi_schedule(&port->napi);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static unsigned int tbt_net_get_headlen(unsigned char *data)
++{
++	union {
++		unsigned char *network;
++		/* l2 headers */
++		struct ethhdr *eth;
++		struct vlan_hdr *vlan;
++		/* l3 headers */
++		struct iphdr *ipv4;
++		struct ipv6hdr *ipv6;
++	} hdr;
++	__be16 protocol;
++	u8 nexthdr = 0;	/* default to not TCP */
++	u8 hlen;
++
++	/* initialize network frame pointer */
++	hdr.network = data;
++
++	/* set first protocol and move network header forward */
++	protocol = hdr.eth->h_proto;
++	hdr.network += ETH_HLEN;
++
++	/* handle any vlan tag if present */
++	if (protocol == htons(ETH_P_8021Q)) {
++		if ((hdr.network - data) > (TBT_NET_RX_HDR_SIZE - VLAN_HLEN))
++			return TBT_NET_RX_HDR_SIZE;
++
++		protocol = hdr.vlan->h_vlan_encapsulated_proto;
++		hdr.network += VLAN_HLEN;
++	}
++
++	/* handle L3 protocols */
++	if (protocol == htons(ETH_P_IP)) {
++		if ((hdr.network - data) >
++				(TBT_NET_RX_HDR_SIZE - sizeof(struct iphdr)))
++			return TBT_NET_RX_HDR_SIZE;
++
++		/* access ihl as a u8 to avoid unaligned access on ia64 */
++		hlen = (hdr.network[0] & 0x0F) << 2;
++
++		/* verify hlen meets minimum size requirements */
++		if (hlen < sizeof(struct iphdr))
++			return hdr.network - data;
++
++		/* record next protocol if header is present */
++		if (!(hdr.ipv4->frag_off & htons(IP_OFFSET)))
++			nexthdr = hdr.ipv4->protocol;
++	} else if (protocol == htons(ETH_P_IPV6)) {
++		if ((hdr.network - data) >
++				(TBT_NET_RX_HDR_SIZE - sizeof(struct ipv6hdr)))
++			return TBT_NET_RX_HDR_SIZE;
++
++		/* record next protocol */
++		nexthdr = hdr.ipv6->nexthdr;
++		hlen = sizeof(struct ipv6hdr);
++	} else {
++		return hdr.network - data;
++	}
++
++	/* relocate pointer to start of L4 header */
++	hdr.network += hlen;
++
++	/* finally sort out TCP/UDP */
++	if (nexthdr == IPPROTO_TCP) {
++		if ((hdr.network - data) >
++				(TBT_NET_RX_HDR_SIZE - sizeof(struct tcphdr)))
++			return TBT_NET_RX_HDR_SIZE;
++
++		/* access doff as a u8 to avoid unaligned access on ia64 */
++		hlen = (hdr.network[12] & 0xF0) >> 2;
++
++		/* verify hlen meets minimum size requirements */
++		if (hlen < sizeof(struct tcphdr))
++			return hdr.network - data;
++
++		hdr.network += hlen;
++	} else if (nexthdr == IPPROTO_UDP) {
++		if ((hdr.network - data) >
++				(TBT_NET_RX_HDR_SIZE - sizeof(struct udphdr)))
++			return TBT_NET_RX_HDR_SIZE;
++
++		hdr.network += sizeof(struct udphdr);
++	}
++
++	/*
++	 * If everything has gone correctly hdr.network should be the
++	 * data section of the packet and will be the end of the header.
++	 * If not then it probably represents the end of the last recognized
++	 * header.
++	 */
++	if ((hdr.network - data) < TBT_NET_RX_HDR_SIZE)
++		return hdr.network - data;
++
++	return TBT_NET_RX_HDR_SIZE;
++}
++
++static void tbt_net_pull_tail(struct sk_buff *skb)
++{
++	skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
++	unsigned char *va;
++	unsigned int pull_len;
++
++	/*
++	 * it is valid to use page_address instead of kmap since we are
++	 * working with pages allocated out of the lomem pool
++	 */
++	va = skb_frag_address(frag);
++
++	pull_len = tbt_net_get_headlen(va);
++
++	/* align pull length to size of long to optimize memcpy performance */
++	skb_copy_to_linear_data(skb, va, ALIGN(pull_len, sizeof(long)));
++
++	/* update all of the pointers */
++	skb_frag_size_sub(frag, pull_len);
++	frag->page_offset += pull_len;
++	skb->data_len -= pull_len;
++	skb->tail += pull_len;
++}
++
++static inline bool tbt_net_alloc_mapped_page(struct device *dev,
++					     struct tbt_buffer *buf, gfp_t gfp)
++{
++	if (!buf->page) {
++		buf->page = alloc_page(gfp | __GFP_COLD);
++		if (unlikely(!buf->page))
++			return false;
++
++		buf->dma = dma_map_page(dev, buf->page, 0, PAGE_SIZE,
++					DMA_FROM_DEVICE);
++		if (dma_mapping_error(dev, buf->dma)) {
++			__free_page(buf->page);
++			buf->page = NULL;
++			return false;
++		}
++		buf->page_offset = 0;
++	}
++	return true;
++}
++
++static bool tbt_net_alloc_rx_buffers(struct device *dev,
++				     struct tbt_desc_ring *rx_ring,
++				     u16 cleaned_count, void __iomem *reg,
++				     gfp_t gfp)
++{
++	u16 i = (rx_ring->last_allocated + 1) & (TBT_NET_NUM_RX_BUFS - 1);
++	bool res = false;
++
++	while (cleaned_count--) {
++		struct tbt_buf_desc *desc = &rx_ring->desc[i];
++		struct tbt_buffer *buf = &rx_ring->buffers[i];
++
++		/* making sure next_to_clean won't get old buffer */
++		desc->attributes = cpu_to_le32(DESC_ATTR_REQ_STS |
++					       DESC_ATTR_INT_EN);
++		if (tbt_net_alloc_mapped_page(dev, buf, gfp)) {
++			res = true;
++			rx_ring->last_allocated = i;
++			i = (i + 1) & (TBT_NET_NUM_RX_BUFS - 1);
++			desc->phys = cpu_to_le64(buf->dma + buf->page_offset);
++		} else
++			break;
++	}
++
++	if (res) {
++		iowrite32((rx_ring->last_allocated << REG_RING_CONS_SHIFT) &
++			  REG_RING_CONS_MASK, reg);
++	}
++
++	return res;
++}
++
++static inline bool tbt_net_multicast_mac_set(const u32 *multicast_hash_table,
++					     const u8 *ether_addr)
++{
++	u16 hash_val = TBT_NET_ETHER_ADDR_HASH(ether_addr);
++
++	return !!(multicast_hash_table[hash_val / BITS_PER_U32] &
++		  BIT(hash_val % BITS_PER_U32));
++}
++
++static enum frame_status tbt_net_check_frame(struct tbt_port *port,
++					     u16 frame_num, u32 *count,
++					     u32 index, u32 *size)
++{
++	struct tbt_desc_ring *rx_ring = &port->rx_ring;
++	struct tbt_frame_header *hdr;
++	u32 len, frame_count, frame_size;
++	__le32 desc_attr = rx_ring->desc[frame_num].attributes;
++	enum frame_status res = GOOD_AS_FIRST_FRAME;
++
++	if (!(desc_attr & cpu_to_le32(DESC_ATTR_DESC_DONE)))
++		return FRAME_NOT_READY;
++
++	rmb(); /* read other fields from desc after checking DD */
++
++	if (unlikely(desc_attr & cpu_to_le32(DESC_ATTR_RX_CRC_ERR))) {
++		++port->stats.rx_crc_errors;
++		goto err;
++	} else if (unlikely(desc_attr &
++				cpu_to_le32(DESC_ATTR_RX_BUF_OVRN_ERR))) {
++		++port->stats.rx_over_errors;
++		goto err;
++	}
++
++	len = (le32_to_cpu(desc_attr) & DESC_ATTR_LEN_MASK)
++	      >> DESC_ATTR_LEN_SHIFT;
++	if (len == 0)
++		len = TBT_RING_MAX_FRAME_SIZE;
++	/* should be greater than just header i.e. contains data */
++	if (unlikely(len <= sizeof(struct tbt_frame_header))) {
++		++port->stats.rx_length_errors;
++		goto err;
++	}
++
++	prefetchw(rx_ring->buffers[frame_num].page);
++	hdr = page_address(rx_ring->buffers[frame_num].page) +
++				rx_ring->buffers[frame_num].page_offset;
++	/* prefetch first cache line of first page */
++	prefetch(hdr);
++
++	/* we are reusing so sync this buffer for CPU use */
++	dma_sync_single_range_for_cpu(&port->nhi_ctxt->pdev->dev,
++				      rx_ring->buffers[frame_num].dma,
++				      rx_ring->buffers[frame_num].page_offset,
++				      TBT_RING_MAX_FRAME_SIZE,
++				      DMA_FROM_DEVICE);
++
++	frame_count = le32_to_cpu(hdr->frame_count);
++	frame_size = le32_to_cpu(hdr->frame_size);
++
++	if (unlikely((frame_size > len - sizeof(struct tbt_frame_header)) ||
++		     (frame_size == 0))) {
++		++port->stats.rx_length_errors;
++		goto err;
++	}
++
++	if (*count) {
++		if (frame_count != *count) {
++			++port->stats.rx_length_errors;
++			goto check_as_first;
++		}
++
++		if (le32_to_cpu(hdr->frame_index) != index) {
++			++port->stats.rx_missed_errors;
++			goto check_as_first;
++		}
++
++		*size += frame_size;
++		if (*size > TBT_NET_MTU) {
++			++port->stats.rx_length_errors;
++			goto err;
++		}
++		res = GOOD_FRAME;
++	} else {
++		const u8 *addr;
++
++check_as_first:
++		rx_ring->next_to_clean = frame_num;
++
++		if (unlikely((frame_count == 0) ||
++			     (frame_count > (TBT_NET_NUM_RX_BUFS / 4)))) {
++			++port->stats.rx_length_errors;
++			goto err;
++		}
++
++		if (hdr->frame_index != 0) {
++			++port->stats.rx_missed_errors;
++			goto err;
++		}
++
++		BUILD_BUG_ON(
++			TBT_NET_RX_HDR_SIZE > TBT_RING_MAX_FRAME_DATA_SIZE);
++		if ((frame_count > 1) && (frame_size < TBT_NET_RX_HDR_SIZE)) {
++			++port->stats.rx_length_errors;
++			goto err;
++		}
++
++		addr = (u8 *)(hdr + 1);
++		if (is_multicast_ether_addr(addr)) {
++			if (!is_broadcast_ether_addr(addr)) {
++				if ((port->packet_filters &
++				     (BIT(PACKET_TYPE_PROMISCUOUS) |
++				      BIT(PACKET_TYPE_ALL_MULTICAST))) ||
++				    tbt_net_multicast_mac_set(
++					port->multicast_hash_table, addr))
++					res = GOOD_AS_FIRST_MULTICAST_FRAME;
++				else
++					goto err;
++			}
++		} else if (!(port->packet_filters &
++			     (BIT(PACKET_TYPE_PROMISCUOUS) |
++			      BIT(PACKET_TYPE_UNICAST_PROMISCUOUS))) &&
++			   !ether_addr_equal(port->net_dev->dev_addr, addr))
++			goto err;
++
++		*size = frame_size;
++		*count = frame_count;
++	}
++
++#if (PREFETCH_STRIDE < 128)
++	prefetch((u8 *)hdr + PREFETCH_STRIDE);
++#endif
++
++	return res;
++
++err:
++	rx_ring->next_to_clean = (frame_num + 1) & (TBT_NET_NUM_RX_BUFS - 1);
++	return FRAME_ERROR;
++}
++
++static int tbt_net_poll(struct napi_struct *napi, int budget)
++{
++	struct tbt_port *port = container_of(napi, struct tbt_port, napi);
++	void __iomem *reg = port->nhi_ctxt->iobase + REG_RX_RING_BASE +
++			    REG_RING_CONS_PROD_OFFSET +
++			    (port->local_path * REG_RING_STEP);
++	unsigned long flags;
++	struct tbt_desc_ring *rx_ring = &port->rx_ring;
++	int rx_packets = 0;
++	u16 cleaned_count = TBT_NUM_BUFS_BETWEEN(rx_ring->last_allocated,
++						 rx_ring->next_to_clean,
++						 TBT_NET_NUM_RX_BUFS);
++
++loop:
++	while (likely(rx_packets < budget)) {
++		struct sk_buff *skb;
++		enum frame_status status;
++		int i;
++		u32 frame_count = 0;
++		u32 size;
++		u16 j;
++		bool multicast = false;
++
++		/*
++		 * return some buffers to hardware, one at a time is too slow
++		 * so allocate  TBT_NET_RX_BUFFER_WRITE buffers at the same time
++		 */
++		if (cleaned_count >= TBT_NET_RX_BUFFER_WRITE) {
++			tbt_net_alloc_rx_buffers(&port->nhi_ctxt->pdev->dev,
++						 rx_ring, cleaned_count, reg,
++						 GFP_ATOMIC);
++			cleaned_count = 0;
++		}
++
++		status = tbt_net_check_frame(port, rx_ring->next_to_clean,
++					     &frame_count, 0, &size);
++		if (status == FRAME_NOT_READY)
++			break;
++
++		if (status == FRAME_ERROR) {
++			++cleaned_count;
++			continue;
++		}
++
++		multicast = (status == GOOD_AS_FIRST_MULTICAST_FRAME);
++
++		for (i = 1, j = (rx_ring->next_to_clean + 1) &
++				(TBT_NET_NUM_RX_BUFS - 1);
++		     i < frame_count;
++		     ++i, j = (j + 1) & (TBT_NET_NUM_RX_BUFS - 1)) {
++			status = tbt_net_check_frame(port, j, &frame_count, i,
++						     &size);
++			if (status == FRAME_NOT_READY)
++				goto out;
++
++			/* if a new frame is found, start over */
++			if ((status == GOOD_AS_FIRST_FRAME) ||
++			    (status == GOOD_AS_FIRST_MULTICAST_FRAME)) {
++				multicast = (status ==
++					     GOOD_AS_FIRST_MULTICAST_FRAME);
++				cleaned_count += i;
++				i = 0;
++				continue;
++			}
++
++			if (status == FRAME_ERROR) {
++				cleaned_count += (i + 1);
++				goto loop;
++			}
++		}
++
++		/* allocate a skb to store the frags */
++		skb = netdev_alloc_skb_ip_align(port->net_dev,
++						TBT_NET_RX_HDR_SIZE);
++		if (unlikely(!skb))
++			break;
++
++		/* we will be copying header into skb->data in
++		 * tbt_net_pull_tail so it is in our interest to prefetch
++		 * it now to avoid a possible cache miss
++		 */
++		prefetchw(skb->data);
++
++		/* if overall size of packet smaller than TBT_NET_RX_HDR_SIZE
++		 * which is a small buffer size we decided to allocate
++		 * as the base to RX
++		 */
++		if (size <= TBT_NET_RX_HDR_SIZE) {
++			struct tbt_buffer *buf =
++				&(rx_ring->buffers[rx_ring->next_to_clean]);
++			u8 *va = page_address(buf->page) + buf->page_offset +
++				 sizeof(struct tbt_frame_header);
++
++			memcpy(__skb_put(skb, size), va,
++			       ALIGN(size, sizeof(long)));
++
++			/* we can reuse buffer as-is,
++			 * just make sure it is local
++			 */
++			if (likely(page_to_nid(buf->page) == numa_node_id()))
++				/* sync the buffer for use by the device */
++				dma_sync_single_range_for_device(
++						&port->nhi_ctxt->pdev->dev,
++						buf->dma, buf->page_offset,
++						TBT_RING_MAX_FRAME_SIZE,
++						DMA_FROM_DEVICE);
++			else {
++				/* this page cannot be reused so discard it */
++				put_page(buf->page);
++				buf->page = NULL;
++				dma_unmap_page(&port->nhi_ctxt->pdev->dev,
++					       buf->dma, PAGE_SIZE,
++					       DMA_FROM_DEVICE);
++			}
++			rx_ring->next_to_clean = (rx_ring->next_to_clean + 1) &
++						 (TBT_NET_NUM_RX_BUFS - 1);
++		} else {
++			for (i = 0; i < frame_count; rx_ring->next_to_clean =
++				(rx_ring->next_to_clean + 1) &
++				(TBT_NET_NUM_RX_BUFS - 1), ++i) {
++				struct tbt_buffer *buf = &(rx_ring->buffers[
++						rx_ring->next_to_clean]);
++				struct tbt_frame_header *hdr =
++						page_address(buf->page) +
++						buf->page_offset;
++				u32 frame_size = le32_to_cpu(hdr->frame_size);
++				unsigned int truesize =
++#if (TBT_NUM_FRAMES_PER_PAGE > 1)
++					ALIGN(frame_size +
++					      sizeof(struct tbt_frame_header),
++					      L1_CACHE_BYTES) -
++					sizeof(struct tbt_frame_header);
++#else
++					TBT_RING_MAX_FRAME_DATA_SIZE;
++#endif
++				/* add frame to skb struct */
++				skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
++						buf->page,
++						sizeof(struct tbt_frame_header)
++							+ buf->page_offset,
++						frame_size, truesize);
++
++#if (TBT_NUM_FRAMES_PER_PAGE > 1)
++				/* move offset up to the next cache line */
++				buf->page_offset += (truesize +
++					sizeof(struct tbt_frame_header));
++
++				/* we can reuse buffer if there is space
++				 * availiable and it is local
++				 */
++				if ((page_to_nid(buf->page) == numa_node_id())
++				    && (buf->page_offset <=
++					PAGE_SIZE - TBT_RING_MAX_FRAME_SIZE)) {
++					/* bump ref count on page before
++					 * it is given to the stack
++					 */
++					get_page(buf->page);
++					/* sync the buffer for use by the
++					 * device
++					 */
++					dma_sync_single_range_for_device(
++						&port->nhi_ctxt->pdev->dev,
++						buf->dma, buf->page_offset,
++						TBT_RING_MAX_FRAME_SIZE,
++						DMA_FROM_DEVICE);
++				} else
++#endif
++				{
++					buf->page = NULL;
++					dma_unmap_page(
++						&port->nhi_ctxt->pdev->dev,
++						buf->dma, PAGE_SIZE,
++						DMA_FROM_DEVICE);
++				}
++			}
++			/* place header from the first
++			 * fragment in linear portion of buffer */
++			tbt_net_pull_tail(skb);
++		}
++
++		/* pad short packets */
++		if (unlikely(skb->len < 60)) {
++			int pad_len = 60 - skb->len;
++
++			/* The skb is freed on error */
++			if (unlikely(skb_pad(skb, pad_len))) {
++				cleaned_count += frame_count;
++				continue;
++			}
++			__skb_put(skb, pad_len);
++		}
++
++		skb->protocol = eth_type_trans(skb, port->net_dev);
++		napi_gro_receive(&port->napi, skb);
++
++		++rx_packets;
++		port->stats.rx_bytes += size;
++		if (multicast)
++			++port->stats.multicast;
++		cleaned_count += frame_count;
++	}
++
++out:
++	port->stats.rx_packets += rx_packets;
++
++	if (cleaned_count)
++		tbt_net_alloc_rx_buffers(&port->nhi_ctxt->pdev->dev,
++					 rx_ring, cleaned_count, reg,
++					 GFP_ATOMIC);
++
++	/* If all work not completed, return budget and keep polling */
++	if (rx_packets >= budget)
++		return budget;
++
++	/* Work is done so exit the polling mode and re-enable the interrupt */
++	napi_complete(napi);
++
++	spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++	/* enable RX interrupt */
++	iowrite32(ioread32(port->nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE) |
++		  REG_RING_INT_RX_PROCESSED(port->local_path,
++					    port->nhi_ctxt->num_paths),
++		  port->nhi_ctxt->iobase + REG_RING_INTERRUPT_BASE);
++	spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++
++	return 0;
++}
++
++static int tbt_net_open(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	int res = 0;
++	int i, j;
++
++	TRACE_FUNC_ENTRY();
++
++	/* change link state to off until path establishment finishes */
++	netif_carrier_off(net_dev);
++
++	/* if we previously succeeded to allocate msix entries,
++	 * now request IRQ for them:
++	 *  2=tx data port 0,
++	 *  3=rx data port 0,
++	 *  4=tx data port 1,
++	 *  5=rx data port 1,
++	 *  ...
++	 *  if not, if msi is used, nhi_msi will handle icm & data pathes
++	 */
++
++	if (port->nhi_ctxt->msix_entries) {
++		char name[] = "tbt-net-xx-xx";
++
++		snprintf(name, sizeof(name), "tbt-net-rx-%02u", port->num);
++		res = devm_request_irq(&port->nhi_ctxt->pdev->dev,
++			port->nhi_ctxt->msix_entries[3+(port->num*2)].vector,
++			tbt_net_rx_msix, 0, name, port);
++		if (res) {
++			netif_err(port, ifup, net_dev, "request_irq %s failed %d\n",
++				  name, res);
++			goto out;
++		}
++		name[8] = 't';
++		res = devm_request_irq(&port->nhi_ctxt->pdev->dev,
++			port->nhi_ctxt->msix_entries[2+(port->num*2)].vector,
++			tbt_net_tx_msix, 0, name, port);
++		if (res) {
++			netif_err(port, ifup, net_dev, "request_irq %s failed %d\n",
++				  name, res);
++			goto request_irq_failure;
++		}
++	}
++	/*
++	 * Verifying that all buffer sizes are well defined.
++	 * Starting with frame(s) will not tip over the
++	 * page boundary
++	 */
++	BUILD_BUG_ON(TBT_NUM_FRAMES_PER_PAGE < 1);
++	/*
++	 * Just to make sure we have enough place for containing
++	 * 3 max MTU packets for TX
++	 */
++	BUILD_BUG_ON((TBT_NET_NUM_TX_BUFS * TBT_RING_MAX_FRAME_SIZE) <
++		     (TBT_NET_MTU * 3));
++	/* make sure the number of TX Buffers is power of 2 */
++	BUILD_BUG_ON((TBT_NET_NUM_TX_BUFS & (TBT_NET_NUM_TX_BUFS - 1)) != 0);
++	/*
++	 * Just to make sure we have enough place for containing
++	 * 3 max MTU packets for RX
++	*/
++	BUILD_BUG_ON((TBT_NET_NUM_RX_BUFS * TBT_RING_MAX_FRAME_SIZE) <
++		     (TBT_NET_MTU * 3));
++	/* make sure the number of RX Buffers is power of 2 */
++	BUILD_BUG_ON((TBT_NET_NUM_RX_BUFS & (TBT_NET_NUM_RX_BUFS - 1)) != 0);
++
++	port->rx_ring.last_allocated = TBT_NET_NUM_RX_BUFS - 1;
++
++	port->tx_ring.buffers = vzalloc(TBT_NET_NUM_TX_BUFS *
++					sizeof(struct tbt_buffer));
++	if (!port->tx_ring.buffers)
++		goto ring_alloc_failure;
++	port->rx_ring.buffers = vzalloc(TBT_NET_NUM_RX_BUFS *
++					sizeof(struct tbt_buffer));
++	if (!port->rx_ring.buffers)
++		goto ring_alloc_failure;
++
++	/* allocate TX and RX descriptors
++	 * if the total size is less than a page, do a central allocation
++	 * Otherwise, split TX and RX
++	 */
++	if (TBT_NET_SIZE_TOTAL_DESCS <= PAGE_SIZE) {
++		port->tx_ring.desc = dmam_alloc_coherent(
++				&port->nhi_ctxt->pdev->dev,
++				TBT_NET_SIZE_TOTAL_DESCS,
++				&port->tx_ring.dma,
++				GFP_KERNEL | __GFP_ZERO);
++		if (!port->tx_ring.desc)
++			goto ring_alloc_failure;
++		/* RX starts where TX finishes */
++		port->rx_ring.desc = &port->tx_ring.desc[TBT_NET_NUM_TX_BUFS];
++		port->rx_ring.dma = port->tx_ring.dma +
++			(TBT_NET_NUM_TX_BUFS * sizeof(struct tbt_buf_desc));
++	} else {
++		port->tx_ring.desc = dmam_alloc_coherent(
++				&port->nhi_ctxt->pdev->dev,
++				TBT_NET_NUM_TX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				&port->tx_ring.dma,
++				GFP_KERNEL | __GFP_ZERO);
++		if (!port->tx_ring.desc)
++			goto ring_alloc_failure;
++		port->rx_ring.desc = dmam_alloc_coherent(
++				&port->nhi_ctxt->pdev->dev,
++				TBT_NET_NUM_RX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				&port->rx_ring.dma,
++				GFP_KERNEL | __GFP_ZERO);
++		if (!port->rx_ring.desc)
++			goto rx_desc_alloc_failure;
++	}
++
++	/* allocate TX buffers and configure the descriptors */
++	for (i = 0; i < TBT_NET_NUM_TX_BUFS; i++) {
++		port->tx_ring.buffers[i].hdr = dma_alloc_coherent(
++			&port->nhi_ctxt->pdev->dev,
++			TBT_NUM_FRAMES_PER_PAGE * TBT_RING_MAX_FRAME_SIZE,
++			&port->tx_ring.buffers[i].dma,
++			GFP_KERNEL);
++		if (!port->tx_ring.buffers[i].hdr)
++			goto buffers_alloc_failure;
++
++		port->tx_ring.desc[i].phys =
++				cpu_to_le64(port->tx_ring.buffers[i].dma);
++		port->tx_ring.desc[i].attributes =
++				cpu_to_le32(DESC_ATTR_REQ_STS |
++					    ((PDF_TBT_NET_START_OF_FRAME <<
++					      DESC_ATTR_SOF_SHIFT) &
++					     DESC_ATTR_SOF_MASK) |
++					    ((PDF_TBT_NET_END_OF_FRAME <<
++					      DESC_ATTR_EOF_SHIFT) &
++					     DESC_ATTR_EOF_MASK));
++
++		/*
++		 * In case the page is bigger than the frame size,
++		 * make the next buffer descriptor points
++		 * on the next frame memory address within the page
++		 */
++		for (i++, j = 1; (i < TBT_NET_NUM_TX_BUFS) &&
++				 (j < TBT_NUM_FRAMES_PER_PAGE); i++) {
++			port->tx_ring.buffers[i].dma =
++				port->tx_ring.buffers[i - 1].dma +
++				TBT_RING_MAX_FRAME_SIZE;
++			port->tx_ring.buffers[i].hdr =
++				(void *)(port->tx_ring.buffers[i - 1].hdr) +
++				TBT_RING_MAX_FRAME_SIZE;
++			/* move the next offset i.e. TBT_RING_MAX_FRAME_SIZE */
++			port->tx_ring.buffers[i].page_offset =
++				port->tx_ring.buffers[i - 1].page_offset +
++				TBT_RING_MAX_FRAME_SIZE;
++			port->tx_ring.desc[i].phys =
++				cpu_to_le64(port->tx_ring.buffers[i].dma);
++			port->tx_ring.desc[i].attributes =
++				cpu_to_le32(DESC_ATTR_REQ_STS |
++					    ((PDF_TBT_NET_START_OF_FRAME <<
++					      DESC_ATTR_SOF_SHIFT) &
++					     DESC_ATTR_SOF_MASK) |
++					    ((PDF_TBT_NET_END_OF_FRAME <<
++					      DESC_ATTR_EOF_SHIFT) &
++					     DESC_ATTR_EOF_MASK));
++		}
++		i--;
++	}
++
++	port->negotiation_status =
++			BIT(port->nhi_ctxt->net_devices[port->num].medium_sts);
++	if (port->negotiation_status == BIT(MEDIUM_READY_FOR_CONNECTION)) {
++		port->login_retry_count = 0;
++		queue_delayed_work(port->nhi_ctxt->net_workqueue,
++				   &port->login_retry_work, 0);
++	}
++
++	netif_info(port, ifup, net_dev, "Thunderbolt(TM) Networking port %u - ready for ThunderboltIP negotiation\n",
++		   port->num);
++	TRACE_FUNC_EXIT();
++	return 0;
++
++buffers_alloc_failure:
++	/* Rollback the Tx buffers that were already allocated
++	 * until the failure
++	*/
++	for (i--; i >= 0; i--) {
++		/* free only for first buffer allocation */
++		if (port->tx_ring.buffers[i].page_offset == 0)
++			dma_free_coherent(&port->nhi_ctxt->pdev->dev,
++					  TBT_NUM_FRAMES_PER_PAGE *
++						TBT_RING_MAX_FRAME_SIZE,
++					  port->tx_ring.buffers[i].hdr,
++					  port->tx_ring.buffers[i].dma);
++		port->tx_ring.buffers[i].hdr = NULL;
++	}
++	/* for central allocation, free all
++	 * otherwise free RX and then TX separately
++	 */
++	if (TBT_NET_SIZE_TOTAL_DESCS <= PAGE_SIZE) {
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_SIZE_TOTAL_DESCS,
++				   port->tx_ring.desc,
++				   port->tx_ring.dma);
++		port->rx_ring.desc = NULL;
++	} else {
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_NUM_RX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				   port->rx_ring.desc,
++				   port->rx_ring.dma);
++		port->rx_ring.desc = NULL;
++rx_desc_alloc_failure:
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_NUM_TX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				   port->tx_ring.desc,
++				   port->tx_ring.dma);
++	}
++	port->tx_ring.desc = NULL;
++ring_alloc_failure:
++	vfree(port->tx_ring.buffers);
++	port->tx_ring.buffers = NULL;
++	vfree(port->rx_ring.buffers);
++	port->rx_ring.buffers = NULL;
++	res = -ENOMEM;
++	netif_err(port, ifup, net_dev, "Thunderbolt(TM) Networking port %u - unable to allocate memory\n",
++		  port->num);
++
++	devm_free_irq(&port->nhi_ctxt->pdev->dev,
++		      port->nhi_ctxt->msix_entries[2 + (port->num * 2)].vector,
++		      port);
++request_irq_failure:
++	devm_free_irq(&port->nhi_ctxt->pdev->dev,
++		      port->nhi_ctxt->msix_entries[3 + (port->num * 2)].vector,
++		      port);
++out:
++	TRACE_FUNC_EXIT();
++	return res;
++}
++
++static int tbt_net_close(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	int i;
++
++	TRACE_FUNC_ENTRY();
++
++	/* Close connection, disable rings, flow controls
++	 * and interrupts
++	 */
++	tbt_net_tear_down(net_dev, !(port->negotiation_status &
++				     BIT(RECEIVE_LOGOUT)));
++
++	cancel_work_sync(&port->login_response_work);
++	cancel_work_sync(&port->logout_work);
++	cancel_work_sync(&port->status_reply_work);
++	cancel_work_sync(&port->approve_inter_domain_work);
++
++	/* Rollback the Tx buffers that were allocated */
++	for (i = 0; i < TBT_NET_NUM_TX_BUFS; i++) {
++		if (port->tx_ring.buffers[i].page_offset == 0)
++			dma_free_coherent(&port->nhi_ctxt->pdev->dev,
++					  TBT_NUM_FRAMES_PER_PAGE *
++						TBT_RING_MAX_FRAME_SIZE,
++					  port->tx_ring.buffers[i].hdr,
++					  port->tx_ring.buffers[i].dma);
++		port->tx_ring.buffers[i].hdr = NULL;
++	}
++	/* Unmap the Rx buffers that were allocated */
++	for (i = 0; i < TBT_NET_NUM_RX_BUFS; i++)
++		if (port->rx_ring.buffers[i].page) {
++			put_page(port->rx_ring.buffers[i].page);
++			port->rx_ring.buffers[i].page = NULL;
++			dma_unmap_page(&port->nhi_ctxt->pdev->dev,
++				       port->rx_ring.buffers[i].dma, PAGE_SIZE,
++				       DMA_FROM_DEVICE);
++		}
++
++	/* For central allocation, free all
++	 * otherwise free RX and then TX separately
++	 */
++	if (TBT_NET_SIZE_TOTAL_DESCS <= PAGE_SIZE) {
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_SIZE_TOTAL_DESCS,
++				   port->tx_ring.desc,
++				   port->tx_ring.dma);
++		port->rx_ring.desc = NULL;
++	} else {
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_NUM_RX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				   port->rx_ring.desc,
++				   port->rx_ring.dma);
++		port->rx_ring.desc = NULL;
++		dmam_free_coherent(&port->nhi_ctxt->pdev->dev,
++				   TBT_NET_NUM_TX_BUFS *
++						sizeof(struct tbt_buf_desc),
++				   port->tx_ring.desc,
++				   port->tx_ring.dma);
++	}
++	port->tx_ring.desc = NULL;
++
++	vfree(port->tx_ring.buffers);
++	port->tx_ring.buffers = NULL;
++	vfree(port->rx_ring.buffers);
++	port->rx_ring.buffers = NULL;
++
++	devm_free_irq(&port->nhi_ctxt->pdev->dev,
++		      port->nhi_ctxt->msix_entries[3 + (port->num * 2)].vector,
++		      port);
++	devm_free_irq(&port->nhi_ctxt->pdev->dev,
++		      port->nhi_ctxt->msix_entries[2 + (port->num * 2)].vector,
++		      port);
++
++	netif_info(port, ifdown, net_dev, "Thunderbolt(TM) Networking port %u - is down\n",
++		   port->num);
++
++	TRACE_FUNC_EXIT();
++	return 0;
++}
++
++static bool tbt_net_xmit_csum(struct sk_buff *skb,
++			      struct tbt_desc_ring *tx_ring, u32 first,
++			      u32 last, u32 frame_count)
++{
++	u8 *dest = (u8 *)(tx_ring->buffers[first].hdr + 1);
++	__sum16 *tucso;  /* TCP UDP Checksum Segment Offset */
++	__be16 protocol = skb->protocol;
++	__wsum wsum = htonl(skb->len - skb_transport_offset(skb));
++	int offset = skb_transport_offset(skb);
++
++	if (skb->ip_summed != CHECKSUM_PARTIAL) {
++		for (; first != last;
++			first = (first + 1) & (TBT_NET_NUM_TX_BUFS - 1)) {
++			tx_ring->buffers[first].hdr->frame_count =
++						cpu_to_le32(frame_count);
++		}
++		return true;
++	}
++
++	if (protocol == htons(ETH_P_8021Q)) {
++		struct vlan_hdr *vhdr, vh;
++
++		vhdr = skb_header_pointer(skb, ETH_HLEN, sizeof(vh), &vh);
++		if (!vhdr)
++			return false;
++
++		protocol = vhdr->h_vlan_encapsulated_proto;
++	}
++
++	/* Data points on the beginning of packet
++	 * Check are the checksum absolute places in the
++	 * packets
++	 * ipcso will update IP checksum
++	 * tucso will update TCP/UPD checksum
++	 */
++	if (protocol == htons(ETH_P_IP)) {
++		__sum16 *ipcso = (__sum16 *)(dest +
++			((u8 *)&(ip_hdr(skb)->check) - skb->data));
++
++		*ipcso = 0;
++		*ipcso = ip_fast_csum(dest + skb_network_offset(skb),
++				      ip_hdr(skb)->ihl);
++		if (ip_hdr(skb)->protocol == IPPROTO_TCP)
++			tucso = (__sum16 *)(dest +
++				((u8 *)&(tcp_hdr(skb)->check) - skb->data));
++		else if (ip_hdr(skb)->protocol == IPPROTO_UDP)
++			tucso = (__sum16 *)(dest +
++				((u8 *)&(udp_hdr(skb)->check) - skb->data));
++		else
++			return false;
++
++		*tucso = ~csum_tcpudp_magic(ip_hdr(skb)->saddr,
++					    ip_hdr(skb)->daddr, 0,
++					    ip_hdr(skb)->protocol, 0);
++	} else if (skb_is_gso(skb)) {
++		if (skb_is_gso_v6(skb)) {
++			tucso = (__sum16 *)(dest +
++				((u8 *)&(tcp_hdr(skb)->check) - skb->data));
++			*tucso = ~csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
++						  &ipv6_hdr(skb)->daddr,
++						  0, IPPROTO_TCP, 0);
++		} else if ((protocol == htons(ETH_P_IPV6)) &&
++			   (skb_shinfo(skb)->gso_type & SKB_GSO_UDP)) {
++			tucso = (__sum16 *)(dest +
++				((u8 *)&(udp_hdr(skb)->check) - skb->data));
++			*tucso = ~csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
++						  &ipv6_hdr(skb)->daddr,
++						  0, IPPROTO_UDP, 0);
++		} else
++			return false;
++	} else if (protocol == htons(ETH_P_IPV6)) {
++		tucso = (__sum16 *)(dest + skb_checksum_start_offset(skb) +
++				    skb->csum_offset);
++		*tucso = ~csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
++					  &ipv6_hdr(skb)->daddr,
++					  0, ipv6_hdr(skb)->nexthdr, 0);
++	} else
++		return false;
++
++	/* First frame was headers, rest of the frames is data */
++	for (; first != last; first = (first + 1) & (TBT_NET_NUM_TX_BUFS - 1),
++								offset = 0) {
++		dest = (u8 *)(tx_ring->buffers[first].hdr + 1) + offset;
++		wsum = csum_partial(
++			dest,
++			le32_to_cpu(tx_ring->buffers[first].hdr->frame_size) -
++									offset,
++			wsum);
++		tx_ring->buffers[first].hdr->frame_count =
++						cpu_to_le32(frame_count);
++	}
++	*tucso = csum_fold(wsum);
++
++	return true;
++}
++
++static netdev_tx_t tbt_net_xmit_frame(struct sk_buff *skb,
++				      struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	struct tbt_desc_ring *tx_ring = &port->tx_ring;
++	u32 prod_cons, prod, cons, first;
++	/* len equivalent to the fragment length */
++	unsigned int len = skb_headlen(skb);
++	/* data_len is overall packet length */
++	unsigned int data_len = skb->len;
++	u32 frame_index;
++	u32 frag_num = 0;
++	const u8 *src = skb->data;
++	u8 *dest;
++	void __iomem *iobase = port->nhi_ctxt->iobase;
++	void __iomem *reg = port->nhi_ctxt->iobase + REG_TX_RING_BASE +
++			    REG_RING_CONS_PROD_OFFSET +
++			    (port->local_path * REG_RING_STEP);
++	bool unmap = false;
++
++	if (unlikely((data_len == 0) || (data_len > TBT_NET_MTU)))
++		goto invalid_packet;
++
++	prod_cons = ioread32(reg);
++	prod = (prod_cons & REG_RING_PROD_MASK) >> REG_RING_PROD_SHIFT;
++	cons = (prod_cons & REG_RING_CONS_MASK) >> REG_RING_CONS_SHIFT;
++	if ((prod >= TBT_NET_NUM_TX_BUFS) || (cons >= TBT_NET_NUM_TX_BUFS))
++		goto out;
++
++	if (data_len > (TBT_NUM_BUFS_BETWEEN(prod, cons, TBT_NET_NUM_TX_BUFS) *
++			TBT_RING_MAX_FRAME_DATA_SIZE)) {
++		unsigned long flags;
++
++		netif_stop_queue(net_dev);
++
++		spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++		/* enable TX interrupt to be notified about available buffers
++		 * and restart transmission upon this
++		 */
++		iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) |
++			  REG_RING_INT_TX_PROCESSED(port->local_path),
++			  iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++
++		return NETDEV_TX_BUSY;
++	}
++
++	first = prod;
++	/* if overall packet is bigger than the frame data size */
++	for (frame_index = 0; data_len > TBT_RING_MAX_FRAME_DATA_SIZE;
++	     ++frame_index, data_len -= TBT_RING_MAX_FRAME_DATA_SIZE,
++	     prod = (prod + 1) & (TBT_NET_NUM_TX_BUFS - 1)) {
++		u32 size_left = TBT_RING_MAX_FRAME_DATA_SIZE;
++
++		dest = (u8 *)(tx_ring->buffers[prod].hdr + 1);
++		tx_ring->desc[prod].attributes &= cpu_to_le32(
++				~(DESC_ATTR_LEN_MASK | DESC_ATTR_INT_EN |
++				  DESC_ATTR_DESC_DONE));
++		tx_ring->buffers[prod].hdr->frame_size =
++				cpu_to_le32(TBT_RING_MAX_FRAME_DATA_SIZE);
++		tx_ring->buffers[prod].hdr->frame_index =
++						cpu_to_le32(frame_index);
++
++		do {
++			if (len > size_left) {
++				/* copy data onto tx buffer data with full
++				 * frame size then break
++				 * and go to next frame
++				*/
++				memcpy(dest, src, size_left);
++				len -= size_left;
++				dest += size_left;
++				src += size_left;
++				break;
++			}
++
++			memcpy(dest, src, len);
++			size_left -= len;
++			dest += len;
++
++			if (unmap) {
++				kunmap_atomic((void *)src);
++				unmap = false;
++			}
++			/*
++			 * Ensure all fragments have been processed
++			 */
++			if (frag_num < skb_shinfo(skb)->nr_frags) {
++				const skb_frag_t *frag =
++					&(skb_shinfo(skb)->frags[frag_num]);
++				len = skb_frag_size(frag);
++				/* map and then unmap quickly */
++				src = kmap_atomic(skb_frag_page(frag)) +
++							frag->page_offset;
++				unmap = true;
++				++frag_num;
++			} else if (unlikely(size_left > 0))
++				goto invalid_packet;
++		} while (size_left > 0);
++	}
++
++	dest = (u8 *)(tx_ring->buffers[prod].hdr + 1);
++	tx_ring->desc[prod].attributes &= cpu_to_le32(~(DESC_ATTR_LEN_MASK |
++							DESC_ATTR_DESC_DONE));
++	/* Enable the interrupts, for resuming from stop queue later (if so)*/
++	tx_ring->desc[prod].attributes |= cpu_to_le32(DESC_ATTR_INT_EN |
++		(((sizeof(struct tbt_frame_header) + data_len) <<
++		  DESC_ATTR_LEN_SHIFT) & DESC_ATTR_LEN_MASK));
++	tx_ring->buffers[prod].hdr->frame_size = cpu_to_le32(data_len);
++	tx_ring->buffers[prod].hdr->frame_index = cpu_to_le32(frame_index);
++
++	/* In case  the remaining data_len is smaller than a frame */
++	while (len < data_len) {
++		memcpy(dest, src, len);
++		data_len -= len;
++		dest += len;
++
++		if (unmap) {
++			kunmap_atomic((void *)src);
++			unmap = false;
++		}
++
++		if (frag_num < skb_shinfo(skb)->nr_frags) {
++			const skb_frag_t *frag =
++					&(skb_shinfo(skb)->frags[frag_num]);
++			len = skb_frag_size(frag);
++			src = kmap_atomic(skb_frag_page(frag)) +
++							frag->page_offset;
++			unmap = true;
++			++frag_num;
++		} else if (unlikely(data_len > 0))
++			goto invalid_packet;
++	}
++	memcpy(dest, src, data_len);
++	if (unmap) {
++		kunmap_atomic((void *)src);
++		unmap = false;
++	}
++
++	++frame_index;
++	prod = (prod + 1) & (TBT_NET_NUM_TX_BUFS - 1);
++
++	if (!tbt_net_xmit_csum(skb, tx_ring, first, prod, frame_index))
++		goto invalid_packet;
++
++	prod_cons &= ~REG_RING_PROD_MASK;
++	prod_cons |= (prod << REG_RING_PROD_SHIFT) & REG_RING_PROD_MASK;
++	wmb(); /* make sure producer update is done after buffers are ready */
++	iowrite32(prod_cons, reg);
++
++	++port->stats.tx_packets;
++	port->stats.tx_bytes += skb->len;
++
++	goto out;
++
++invalid_packet:
++	++port->stats.tx_errors;
++	netif_err(port, tx_err, net_dev, "%s: port %u invalid transmit packet\n",
++		  __func__, port->num);
++out:
++	dev_kfree_skb_any(skb);
++	return NETDEV_TX_OK;
++}
++
++static void tbt_net_set_rx_mode(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	struct netdev_hw_addr *ha;
++
++	TRACE_FUNC_ENTRY();
++
++	if (net_dev->flags & IFF_PROMISC)
++		port->packet_filters |= BIT(PACKET_TYPE_PROMISCUOUS);
++	else
++		port->packet_filters &= ~BIT(PACKET_TYPE_PROMISCUOUS);
++	if (net_dev->flags & IFF_ALLMULTI)
++		port->packet_filters |= BIT(PACKET_TYPE_ALL_MULTICAST);
++	else
++		port->packet_filters &= ~BIT(PACKET_TYPE_ALL_MULTICAST);
++
++	/* if you have more than a single MAC address */
++	if (netdev_uc_count(net_dev) > 1)
++		port->packet_filters |= BIT(PACKET_TYPE_UNICAST_PROMISCUOUS);
++	/* if have a single MAC address */
++	else if (netdev_uc_count(net_dev) == 1) {
++		netdev_for_each_uc_addr(ha, net_dev)
++			/* checks whether the MAC is what we set */
++			if (ether_addr_equal(ha->addr, net_dev->dev_addr))
++				port->packet_filters &=
++					~BIT(PACKET_TYPE_UNICAST_PROMISCUOUS);
++			else
++				port->packet_filters |=
++					BIT(PACKET_TYPE_UNICAST_PROMISCUOUS);
++	} else
++		port->packet_filters &= ~BIT(PACKET_TYPE_UNICAST_PROMISCUOUS);
++
++	/* Populate the multicast hash table with received MAC addresses */
++	memset(port->multicast_hash_table, 0,
++	       sizeof(port->multicast_hash_table));
++	netdev_for_each_mc_addr(ha, net_dev) {
++		u16 hash_val = TBT_NET_ETHER_ADDR_HASH(ha->addr);
++
++		port->multicast_hash_table[hash_val / BITS_PER_U32] |=
++						BIT(hash_val % BITS_PER_U32);
++	}
++
++	TRACE_FUNC_EXIT();
++}
++
++static struct rtnl_link_stats64 *tbt_net_get_stats64(
++					struct net_device *net_dev,
++					struct rtnl_link_stats64 *stats)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	memset(stats, 0, sizeof(*stats));
++	stats->tx_packets = port->stats.tx_packets;
++	stats->tx_bytes = port->stats.tx_bytes;
++	stats->tx_errors = port->stats.tx_errors;
++	stats->rx_packets = port->stats.rx_packets;
++	stats->rx_bytes = port->stats.rx_bytes;
++	stats->rx_length_errors = port->stats.rx_length_errors;
++	stats->rx_over_errors = port->stats.rx_over_errors;
++	stats->rx_crc_errors = port->stats.rx_crc_errors;
++	stats->rx_missed_errors = port->stats.rx_missed_errors;
++	stats->rx_errors = stats->rx_length_errors + stats->rx_over_errors +
++			   stats->rx_crc_errors + stats->rx_missed_errors;
++	stats->multicast = port->stats.multicast;
++	return stats;
++}
++
++static int tbt_net_set_mac_address(struct net_device *net_dev, void *addr)
++{
++	struct sockaddr *saddr = addr;
++
++	TRACE_FUNC_ENTRY();
++
++	if (!is_valid_ether_addr(saddr->sa_data))
++		return -EADDRNOTAVAIL;
++
++	memcpy(net_dev->dev_addr, saddr->sa_data, net_dev->addr_len);
++
++	TRACE_FUNC_EXIT();
++	return 0;
++}
++
++static int tbt_net_change_mtu(struct net_device *net_dev, int new_mtu)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	/* MTU < 68 is an error and causes problems on some kernels */
++	if ((new_mtu < 68) || (new_mtu > TBT_NET_MTU))
++		return -EINVAL;
++
++	netif_info(port, probe, net_dev, "Thunderbolt(TM) Networking port %u - changing MTU from %u to %d\n",
++		   port->num, net_dev->mtu, new_mtu);
++
++	net_dev->mtu = new_mtu;
++
++	return 0;
++}
++
++static const struct net_device_ops tbt_netdev_ops = {
++	/* called when the network is up'ed*/
++	.ndo_open		= tbt_net_open,
++	/* called when the network is down'ed*/
++	.ndo_stop		= tbt_net_close,
++	.ndo_start_xmit		= tbt_net_xmit_frame,
++	.ndo_set_rx_mode	= tbt_net_set_rx_mode,
++	.ndo_get_stats64	= tbt_net_get_stats64,
++	.ndo_set_mac_address	= tbt_net_set_mac_address,
++	.ndo_change_mtu		= tbt_net_change_mtu,
++	.ndo_validate_addr	= eth_validate_addr,
++};
++
++static int tbt_net_get_settings(__maybe_unused struct net_device *net_dev,
++				struct ethtool_cmd *ecmd)
++{
++	ecmd->supported |= SUPPORTED_10000baseT_Full;
++	ecmd->advertising |= ADVERTISED_10000baseT_Full;
++	ecmd->autoneg = AUTONEG_DISABLE;
++	ecmd->transceiver = XCVR_INTERNAL;
++	ecmd->supported |= SUPPORTED_FIBRE;
++	ecmd->advertising |= ADVERTISED_FIBRE;
++	ecmd->port = PORT_FIBRE;
++	ethtool_cmd_speed_set(ecmd, SPEED_10000);
++	ecmd->duplex = DUPLEX_FULL;
++
++	return 0;
++}
++
++
++static u32 tbt_net_get_msglevel(struct net_device *net_dev)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	return port->msg_enable;
++}
++
++static void tbt_net_set_msglevel(struct net_device *net_dev, u32 data)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	port->msg_enable = data;
++}
++
++static void tbt_net_get_strings(__maybe_unused struct net_device *net_dev,
++				u32 stringset, u8 *data)
++{
++	if (stringset == ETH_SS_STATS)
++		memcpy(data, tbt_net_gstrings_stats,
++		       sizeof(tbt_net_gstrings_stats));
++}
++
++static void tbt_net_get_ethtool_stats(struct net_device *net_dev,
++				      __maybe_unused struct ethtool_stats *sts,
++				      u64 *data)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	memcpy(data, &port->stats, sizeof(port->stats));
++}
++
++static int tbt_net_get_sset_count(__maybe_unused struct net_device *net_dev,
++				  int sset)
++{
++	if (sset == ETH_SS_STATS)
++		return sizeof(tbt_net_gstrings_stats) / ETH_GSTRING_LEN;
++	return -EOPNOTSUPP;
++}
++
++static void tbt_net_get_drvinfo(struct net_device *net_dev,
++				struct ethtool_drvinfo *drvinfo)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	strlcpy(drvinfo->driver, "Thunderbolt(TM) Networking",
++		sizeof(drvinfo->driver));
++	strlcpy(drvinfo->version, DRV_VERSION, sizeof(drvinfo->version));
++
++	strlcpy(drvinfo->bus_info, pci_name(port->nhi_ctxt->pdev),
++		sizeof(drvinfo->bus_info));
++	drvinfo->n_stats = tbt_net_get_sset_count(net_dev, ETH_SS_STATS);
++}
++
++static const struct ethtool_ops tbt_net_ethtool_ops = {
++	.get_settings		= tbt_net_get_settings,
++	.get_drvinfo		= tbt_net_get_drvinfo,
++	.get_link		= ethtool_op_get_link,
++	.get_msglevel		= tbt_net_get_msglevel,
++	.set_msglevel		= tbt_net_set_msglevel,
++	.get_strings		= tbt_net_get_strings,
++	.get_ethtool_stats	= tbt_net_get_ethtool_stats,
++	.get_sset_count		= tbt_net_get_sset_count,
++};
++
++static inline int send_message(struct tbt_port *port, const char *func,
++				enum pdf_value pdf, u32 msg_len, const u8 *msg)
++{
++	int res = down_timeout(&port->nhi_ctxt->send_sem,
++			   msecs_to_jiffies(3 * MSEC_PER_SEC));
++	if (res) {
++		netif_err(port, link, port->net_dev, "%s: controller id 0x%x timeout on send semaphore\n",
++			  func, port->nhi_ctxt->id);
++		return res;
++	}
++
++	if (!mutex_trylock(&port->nhi_ctxt->d0_exit_send_mutex)) {
++		up(&port->nhi_ctxt->send_sem);
++		netif_notice(port, link, port->net_dev, "%s: controller id 0x%x is existing D0\n",
++			     func, port->nhi_ctxt->id);
++		return -ENODEV;
++	}
++
++	res = nhi_send_message(port->nhi_ctxt, pdf, msg_len, msg,
++			       pdf == PDF_INTER_DOMAIN_RESPONSE);
++
++	mutex_unlock(&port->nhi_ctxt->d0_exit_send_mutex);
++	if (res)
++		up(&port->nhi_ctxt->send_sem);
++
++	return res;
++}
++
++static void approve_inter_domain(struct work_struct *work)
++{
++	struct tbt_port *port = container_of(work, typeof(*port),
++					     approve_inter_domain_work);
++	int i;
++	struct approve_inter_domain_connection_command approve_msg = {
++		.req_code = cpu_to_be32(
++				APPROVE_INTER_DOMAIN_CONNECTION_COMMAND_CODE),
++		.transmit_path = cpu_to_be16(LOGIN_TX_PATH),
++	};
++
++	TRACE_FUNC_ENTRY();
++
++	approve_msg.attributes = cpu_to_be32(
++		((L0_PORT_NUM(port->route_str.lo) << AIDC_ATTR_LINK_SHIFT) &
++		 AIDC_ATTR_LINK_MASK) |
++		((port->local_depth << AIDC_ATTR_DEPTH_SHIFT) &
++		 AIDC_ATTR_DEPTH_MASK));
++	for (i = 0; i < ARRAY_SIZE(port->inter_domain_remote_unique_id); i++)
++		approve_msg.connected_inter_domain_remote_unique_id[i] =
++			cpu_to_be32(port->inter_domain_remote_unique_id[i]);
++	approve_msg.transmit_ring_number = cpu_to_be16(port->local_path);
++	approve_msg.receive_ring_number = cpu_to_be16(port->local_path);
++	approve_msg.receive_path = cpu_to_be16(port->transmit_path);
++	approve_msg.crc = cpu_to_be32(~__crc32c_le(
++		~0, (unsigned char const *)&approve_msg,
++		offsetof(struct approve_inter_domain_connection_command,
++			 crc)));
++
++	send_message(port, __func__, PDF_SW_TO_FW_COMMAND, sizeof(approve_msg),
++		     (const u8 *)&approve_msg);
++
++	TRACE_FUNC_EXIT();
++}
++
++static void disconnect_path(struct tbt_port *port)
++{
++	u32 cmd = (((DISCONNECT_PORT_A_INTER_DOMAIN_PATH + port->num) <<
++		    REG_INMAIL_CMD_CMD_SHIFT) & REG_INMAIL_CMD_CMD_MASK) |
++		  REG_INMAIL_CMD_REQUEST;
++
++	TRACE_FUNC_ENTRY();
++
++	if (mutex_lock_interruptible(&port->nhi_ctxt->mailbox_mutex))
++		goto out;
++
++	if (!mutex_trylock(&port->nhi_ctxt->d0_exit_mailbox_mutex)) {
++		netif_notice(port, link, port->net_dev, "%s: controller id 0x%x is existing D0\n",
++			     __func__, port->nhi_ctxt->id);
++		goto unlock;
++	}
++
++	nhi_mailbox(port->nhi_ctxt, cmd, false);
++
++	port->nhi_ctxt->net_devices[port->num].medium_sts =
++						MEDIUM_READY_FOR_CONNECTION;
++
++	mutex_unlock(&port->nhi_ctxt->d0_exit_mailbox_mutex);
++unlock:
++	mutex_unlock(&port->nhi_ctxt->mailbox_mutex);
++out:
++	TRACE_FUNC_EXIT();
++}
++
++static inline void prepare_header(struct thunderbolt_ip_header *header,
++				  struct tbt_port *port,
++				  enum thunderbolt_ip_packet_type packet_type,
++				  u8 len_dwords)
++{
++	int i;
++
++	const unique_id_be apple_tbt_ip_proto_uuid =
++					APPLE_THUNDERBOLT_IP_PROTOCOL_UUID;
++
++	header->packet_type = cpu_to_be32(packet_type);
++	header->route_str.hi = cpu_to_be32(port->route_str.hi);
++	header->route_str.lo = cpu_to_be32(port->route_str.lo);
++	header->attributes = cpu_to_be32(
++		((port->seq_num << HDR_ATTR_SEQ_NUM_SHIFT) &
++		 HDR_ATTR_SEQ_NUM_MASK) |
++		((len_dwords << HDR_ATTR_LEN_SHIFT) & HDR_ATTR_LEN_MASK));
++	for (i = 0; i < ARRAY_SIZE(apple_tbt_ip_proto_uuid); i++)
++		header->apple_tbt_ip_proto_uuid[i] =
++			apple_tbt_ip_proto_uuid[i];
++	for (i = 0; i < ARRAY_SIZE(header->initiator_uuid); i++)
++		header->initiator_uuid[i] =
++			cpu_to_be32(port->inter_domain_local_unique_id[i]);
++	for (i = 0; i < ARRAY_SIZE(header->target_uuid); i++)
++		header->target_uuid[i] =
++			cpu_to_be32(port->inter_domain_remote_unique_id[i]);
++	header->command_id = cpu_to_be32(port->command_id);
++
++	port->command_id++;
++}
++
++static void status_reply(struct work_struct *work)
++{
++	struct tbt_port *port = container_of(work, typeof(*port),
++					     status_reply_work);
++	struct thunderbolt_ip_status status_msg = {
++		.status = 0,
++	};
++
++	TRACE_FUNC_ENTRY();
++
++	prepare_header(&status_msg.header, port,
++		       THUNDERBOLT_IP_STATUS_TYPE,
++		       (offsetof(struct thunderbolt_ip_status, crc) -
++			offsetof(struct thunderbolt_ip_status,
++			       header.apple_tbt_ip_proto_uuid)) / sizeof(u32));
++
++	status_msg.crc = cpu_to_be32(~__crc32c_le(
++				~0, (unsigned char const *)&status_msg,
++				offsetof(struct thunderbolt_ip_logout, crc)));
++
++	send_message(port, __func__, PDF_INTER_DOMAIN_RESPONSE,
++		     sizeof(status_msg), (const u8 *)&status_msg);
++
++	TRACE_FUNC_EXIT();
++}
++
++static void logout(struct work_struct *work)
++{
++	struct tbt_port *port = container_of(work, typeof(*port),
++					     logout_work);
++	struct thunderbolt_ip_logout logout_msg;
++
++	TRACE_FUNC_ENTRY();
++
++	prepare_header(&logout_msg.header, port,
++		       THUNDERBOLT_IP_LOGOUT_TYPE,
++		       (offsetof(struct thunderbolt_ip_logout, crc) -
++			offsetof(struct thunderbolt_ip_logout,
++			       header.apple_tbt_ip_proto_uuid)) / sizeof(u32));
++
++	logout_msg.crc = cpu_to_be32(~__crc32c_le(
++				~0, (unsigned char const *)&logout_msg,
++				offsetof(struct thunderbolt_ip_logout, crc)));
++
++	send_message(port, __func__, PDF_INTER_DOMAIN_RESPONSE,
++		     sizeof(logout_msg), (const u8 *)&logout_msg);
++
++	TRACE_FUNC_EXIT();
++}
++
++static void login_response(struct work_struct *work)
++{
++	struct tbt_port *port = container_of(work, typeof(*port),
++					     login_response_work);
++	struct thunderbolt_ip_login_response login_res_msg = {
++		.receiver_mac_address_length = cpu_to_be32(ETH_ALEN),
++	};
++
++	TRACE_FUNC_ENTRY();
++
++	prepare_header(&login_res_msg.header, port,
++		       THUNDERBOLT_IP_LOGIN_RESPONSE_TYPE,
++		       (offsetof(struct thunderbolt_ip_login_response, crc) -
++			offsetof(struct thunderbolt_ip_login_response,
++			       header.apple_tbt_ip_proto_uuid)) / sizeof(u32));
++
++	memcpy(login_res_msg.receiver_mac_address, port->net_dev->dev_addr,
++	       ETH_ALEN);
++	login_res_msg.crc = cpu_to_be32(~__crc32c_le(
++			~0, (unsigned char const *)&login_res_msg,
++			offsetof(struct thunderbolt_ip_login_response, crc)));
++
++	send_message(port, __func__, PDF_INTER_DOMAIN_RESPONSE,
++		     sizeof(login_res_msg), (const u8 *)&login_res_msg);
++
++	TRACE_FUNC_EXIT();
++}
++
++static void login_retry(struct work_struct *work)
++{
++	struct tbt_port *port = container_of(work, typeof(*port),
++					     login_retry_work.work);
++	struct thunderbolt_ip_login login_msg = {
++		.protocol_revision = cpu_to_be32(
++				APPLE_THUNDERBOLT_IP_PROTOCOL_REVISION),
++		.transmit_path = cpu_to_be32(LOGIN_TX_PATH),
++	};
++
++	TRACE_FUNC_ENTRY();
++
++	if (port->nhi_ctxt->d0_exit)
++		goto out;
++
++	port->login_retry_count++;
++
++	prepare_header(&login_msg.header, port,
++		       THUNDERBOLT_IP_LOGIN_TYPE,
++		       (offsetof(struct thunderbolt_ip_login, crc) -
++			offsetof(struct thunderbolt_ip_login,
++			       header.apple_tbt_ip_proto_uuid)) / sizeof(u32));
++
++	login_msg.crc = cpu_to_be32(~__crc32c_le(
++				~0, (unsigned char const *)&login_msg,
++				offsetof(struct thunderbolt_ip_login, crc)));
++
++	if (send_message(port, __func__, PDF_INTER_DOMAIN_RESPONSE,
++			 sizeof(login_msg), (const u8 *)&login_msg) == -ENODEV)
++		goto out;
++
++	if (likely(port->login_retry_count < NUM_TX_LOGIN_RETRIES))
++		queue_delayed_work(port->nhi_ctxt->net_workqueue,
++				   &port->login_retry_work,
++				   msecs_to_jiffies(5 * MSEC_PER_SEC));
++	else
++		netif_notice(port, link, port->net_dev, "%s: port %u (0x%x) login timeout after %u retries\n",
++			     __func__, port->num, port->negotiation_status,
++			     port->login_retry_count);
++
++out:
++	TRACE_FUNC_EXIT();
++}
++
++static void tbt_net_tear_down(struct net_device *net_dev, bool send_logout)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	void __iomem *iobase = port->nhi_ctxt->iobase;
++	void __iomem *tx_reg = NULL;
++	u32 tx_reg_val = 0;
++
++	TRACE_FUNC_ENTRY();
++
++	netif_carrier_off(net_dev);
++	netif_stop_queue(net_dev);
++
++	if (port->negotiation_status & BIT(MEDIUM_CONNECTED)) {
++		void __iomem *rx_reg = iobase + REG_RX_OPTIONS_BASE +
++		      (port->local_path * REG_OPTS_STEP);
++		u32 rx_reg_val = ioread32(rx_reg) & ~REG_OPTS_E2E_EN;
++
++		napi_disable(&port->napi);
++
++		tx_reg = iobase + REG_TX_OPTIONS_BASE +
++			 (port->local_path * REG_OPTS_STEP);
++		tx_reg_val = ioread32(tx_reg) & ~REG_OPTS_E2E_EN;
++
++		/* disable RX flow control  */
++		iowrite32(rx_reg_val, rx_reg);
++		wmb(); /* TX should be after RX */
++		/* disable TX flow control  */
++		iowrite32(tx_reg_val, tx_reg);
++		wmb(); /* rings disable should be after disabling E2E */
++		/* disable RX ring  */
++		iowrite32(rx_reg_val & ~REG_OPTS_VALID, rx_reg);
++		wmb(); /* make sure disable RX ring is done */
++
++		disconnect_path(port);
++	}
++
++	/* Stop login messages */
++	cancel_delayed_work_sync(&port->login_retry_work);
++
++	if (send_logout)
++		queue_work(port->nhi_ctxt->net_workqueue, &port->logout_work);
++
++	if (port->negotiation_status & BIT(MEDIUM_CONNECTED)) {
++		unsigned long flags;
++
++		/* wait for TX to finish */
++		usleep_range(5 * USEC_PER_MSEC, 7 * USEC_PER_MSEC);
++		/* disable TX ring  */
++		iowrite32(tx_reg_val & ~REG_OPTS_VALID, tx_reg);
++
++		spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++		/* disable RX and TX interrupts */
++		iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) &
++			  ~(REG_RING_INT_RX_PROCESSED(port->local_path,
++					port->nhi_ctxt->num_paths) |
++			    REG_RING_INT_TX_PROCESSED(port->local_path)),
++			  iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++	}
++
++	port->rx_ring.next_to_clean = 0;
++	port->rx_ring.last_allocated = TBT_NET_NUM_RX_BUFS - 1;
++
++	TRACE_FUNC_EXIT();
++}
++
++void negotiation_events(struct net_device *net_dev,
++			enum medium_status medium_sts)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++	void __iomem *iobase = port->nhi_ctxt->iobase;
++	void __iomem *reg;
++	unsigned long flags;
++
++	TRACE_FUNC_ENTRY();
++
++	if (!netif_running(net_dev)) {
++		netif_dbg(port, link, net_dev, "%s: port %u (0x%x) is down\n",
++			  __func__, port->num, port->negotiation_status);
++		goto out;
++	}
++
++	netif_dbg(port, link, net_dev, "%s: port %u (0x%x) receive event %u\n",
++		  __func__, port->num, port->negotiation_status,
++		  medium_sts);
++
++	switch (medium_sts) {
++
++	case MEDIUM_DISCONNECTED:
++		tbt_net_tear_down(net_dev, (port->negotiation_status &
++					    (BIT(MEDIUM_CONNECTED) |
++					     BIT(MEDIUM_READY_FOR_CONNECTION)))
++					   && !(port->negotiation_status &
++						BIT(RECEIVE_LOGOUT)));
++		port->negotiation_status = BIT(MEDIUM_DISCONNECTED);
++		break;
++
++	case MEDIUM_CONNECTED:
++		/* check if meanwhile other side sent logout
++		 * if yes, just don't allow connection to take place
++		 * and disconnect path
++		 */
++		if (port->negotiation_status & BIT(RECEIVE_LOGOUT)) {
++			disconnect_path(port);
++			break;
++		}
++
++		/* configure RX ring */
++		reg = iobase + REG_RX_RING_BASE +
++		      (port->local_path * REG_RING_STEP);
++		iowrite32(port->rx_ring.dma, reg + REG_RING_PHYS_LO_OFFSET);
++		iowrite32(port->rx_ring.dma >> 32,
++			  reg + REG_RING_PHYS_HI_OFFSET);
++		iowrite32(((TBT_NET_NUM_RX_BUFS << REG_RING_SIZE_SHIFT) &
++				REG_RING_SIZE_MASK) |
++			  ((TBT_RING_MAX_FRAME_SIZE << REG_RING_BUF_SIZE_SHIFT)
++				& REG_RING_BUF_SIZE_MASK),
++			  reg + REG_RING_SIZE_OFFSET);
++		/* allocate RX buffers and configure the descriptors */
++		if (!tbt_net_alloc_rx_buffers(&port->nhi_ctxt->pdev->dev,
++					      &port->rx_ring,
++					      TBT_NET_NUM_RX_BUFS,
++					      reg + REG_RING_CONS_PROD_OFFSET,
++					      GFP_KERNEL)) {
++			netif_err(port, link, net_dev, "Thunderbolt(TM) Networking port %u - no memory for receive buffers\n",
++				  port->num);
++			tbt_net_tear_down(net_dev, true);
++			break;
++		}
++
++		/* configure TX ring */
++		reg = iobase + REG_TX_RING_BASE +
++		      (port->local_path * REG_RING_STEP);
++		iowrite32(port->tx_ring.dma, reg + REG_RING_PHYS_LO_OFFSET);
++		iowrite32(port->tx_ring.dma >> 32,
++			  reg + REG_RING_PHYS_HI_OFFSET);
++		iowrite32((TBT_NET_NUM_TX_BUFS << REG_RING_SIZE_SHIFT) &
++				REG_RING_SIZE_MASK,
++			  reg + REG_RING_SIZE_OFFSET);
++
++		/* enable the rings */
++		reg = iobase + REG_TX_OPTIONS_BASE +
++		      (port->local_path * REG_OPTS_STEP);
++		iowrite32(REG_OPTS_VALID, reg);
++
++		reg = iobase + REG_RX_OPTIONS_BASE +
++		      (port->local_path * REG_OPTS_STEP);
++		iowrite32(((BIT(PDF_TBT_NET_START_OF_FRAME) <<
++			    REG_RX_OPTS_MASK_SOF_SHIFT) &
++			   REG_RX_OPTS_MASK_SOF_MASK) |
++			  ((BIT(PDF_TBT_NET_END_OF_FRAME) <<
++			    REG_RX_OPTS_MASK_EOF_SHIFT) &
++			   REG_RX_OPTS_MASK_EOF_MASK),
++			  reg + REG_RX_OPTS_MASK_OFFSET);
++		iowrite32(REG_OPTS_VALID | REG_OPTS_E2E_EN |
++			  ((TBT_EXIST_BUT_UNUSED_HOPID <<
++			    REG_RX_OPTS_TX_E2E_HOP_ID_SHIFT) &
++			   REG_RX_OPTS_TX_E2E_HOP_ID_MASK), reg);
++
++		spin_lock_irqsave(&port->nhi_ctxt->lock, flags);
++		/* enable RX interrupt */
++		iowrite32(ioread32(iobase + REG_RING_INTERRUPT_BASE) |
++			  REG_RING_INT_RX_PROCESSED(port->local_path,
++						    port->nhi_ctxt->num_paths),
++			  iobase + REG_RING_INTERRUPT_BASE);
++		spin_unlock_irqrestore(&port->nhi_ctxt->lock, flags);
++
++		port->negotiation_status = BIT(MEDIUM_CONNECTED);
++
++		netif_info(port, link, net_dev, "Thunderbolt(TM) Networking port %u - ready\n",
++			   port->num);
++
++		napi_enable(&port->napi);
++		netif_carrier_on(net_dev);
++		netif_start_queue(net_dev);
++		break;
++
++	case MEDIUM_READY_FOR_CONNECTION:
++		/* If medium is connected, no reason go back,
++		 * keep it 'connected'.
++		 * If received login response, don't need to trigger login
++		 * retries again.
++		 */
++		if (unlikely(port->negotiation_status &
++			     (BIT(MEDIUM_CONNECTED) |
++			      BIT(RECEIVE_LOGIN_RESPONSE))))
++			break;
++
++		port->negotiation_status = BIT(MEDIUM_READY_FOR_CONNECTION);
++		port->login_retry_count = 0;
++		queue_delayed_work(port->nhi_ctxt->net_workqueue,
++				   &port->login_retry_work, 0);
++		break;
++
++	default:
++		break;
++	}
++
++out:
++	TRACE_FUNC_EXIT();
++}
++
++void negotiation_messages(struct net_device *net_dev,
++			  struct thunderbolt_ip_header *hdr)
++{
++	struct tbt_port *port = netdev_priv(net_dev);
++
++	TRACE_FUNC_ENTRY();
++
++	if (!netif_running(net_dev)) {
++		netif_dbg(port, link, net_dev, "%s: port %u (0x%x) is down\n",
++			  __func__, port->num, port->negotiation_status);
++		goto out;
++	}
++
++	switch (hdr->packet_type) {
++
++	case cpu_to_be32(THUNDERBOLT_IP_LOGIN_TYPE):
++		port->transmit_path = be32_to_cpu(
++			((struct thunderbolt_ip_login *)hdr)->transmit_path);
++		netif_dbg(port, link, net_dev, "%s: port %u (0x%x) receive ThunderboltIP login message with transmit path %u\n",
++			  __func__, port->num, port->negotiation_status,
++			  port->transmit_path);
++
++		if (unlikely(port->negotiation_status &
++			     BIT(MEDIUM_DISCONNECTED)))
++			break;
++
++		queue_work(port->nhi_ctxt->net_workqueue,
++			   &port->login_response_work);
++
++		if (unlikely(port->negotiation_status & BIT(MEDIUM_CONNECTED)))
++			break;
++
++		/* In case a login response received from other peer
++		 * on my login and acked their login for the first time,
++		 * so just approve the inter-domain now
++		 */
++		if (port->negotiation_status & BIT(RECEIVE_LOGIN_RESPONSE)) {
++			if (!(port->negotiation_status & BIT(RECEIVE_LOGIN)))
++				queue_work(port->nhi_ctxt->net_workqueue,
++					   &port->approve_inter_domain_work);
++		/* if we reached the number of max retries or previous
++		 * logout, schedule another round of login retries
++		 */
++		} else if ((port->login_retry_count >= NUM_TX_LOGIN_RETRIES) ||
++			   (port->negotiation_status & BIT(RECEIVE_LOGOUT))) {
++			port->negotiation_status &= ~(BIT(RECEIVE_LOGOUT));
++			port->login_retry_count = 0;
++			queue_delayed_work(port->nhi_ctxt->net_workqueue,
++					   &port->login_retry_work, 0);
++		}
++
++		port->negotiation_status |= BIT(RECEIVE_LOGIN);
++
++		break;
++
++	case cpu_to_be32(THUNDERBOLT_IP_LOGIN_RESPONSE_TYPE):
++		if (likely(
++			((struct thunderbolt_ip_login_response *)hdr)->status
++			== 0)) {
++			netif_dbg(port, link, net_dev, "%s: port %u (0x%x) receive ThunderboltIP login response message\n",
++				  __func__, port->num,
++				  port->negotiation_status);
++
++			if (unlikely(port->negotiation_status &
++				     (BIT(MEDIUM_DISCONNECTED) |
++				      BIT(MEDIUM_CONNECTED) |
++				      BIT(RECEIVE_LOGIN_RESPONSE))))
++				break;
++
++			port->negotiation_status |=
++						BIT(RECEIVE_LOGIN_RESPONSE);
++			cancel_delayed_work_sync(&port->login_retry_work);
++			/* login was received from other peer and now response
++			 * on our login so approve the inter-domain
++			 */
++			if (port->negotiation_status & BIT(RECEIVE_LOGIN))
++				queue_work(port->nhi_ctxt->net_workqueue,
++					   &port->approve_inter_domain_work);
++			else
++				port->negotiation_status &=
++							~BIT(RECEIVE_LOGOUT);
++		} else
++			netif_notice(port, link, net_dev, "%s: port %u (0x%x) receive ThunderboltIP login response message with status %u\n",
++				     __func__, port->num,
++				     port->negotiation_status,
++				     be32_to_cpu(
++				     ((struct thunderbolt_ip_login_response *)
++								hdr)->status));
++		break;
++
++	case cpu_to_be32(THUNDERBOLT_IP_LOGOUT_TYPE):
++		netif_dbg(port, link, net_dev, "%s: port %u (0x%x) receive ThunderboltIP logout message\n",
++			  __func__, port->num, port->negotiation_status);
++
++		queue_work(port->nhi_ctxt->net_workqueue,
++			   &port->status_reply_work);
++		port->negotiation_status &= ~(BIT(RECEIVE_LOGIN) |
++					      BIT(RECEIVE_LOGIN_RESPONSE));
++		port->negotiation_status |= BIT(RECEIVE_LOGOUT);
++
++		if (!(port->negotiation_status & BIT(MEDIUM_CONNECTED))) {
++			tbt_net_tear_down(net_dev, false);
++			break;
++		}
++
++		tbt_net_tear_down(net_dev, true);
++
++		port->negotiation_status |= BIT(MEDIUM_READY_FOR_CONNECTION);
++		port->negotiation_status &= ~(BIT(MEDIUM_CONNECTED));
++		break;
++
++	case cpu_to_be32(THUNDERBOLT_IP_STATUS_TYPE):
++		netif_dbg(port, link, net_dev, "%s: port %u (0x%x) receive ThunderboltIP status message with status %u\n",
++			  __func__, port->num, port->negotiation_status,
++			  be32_to_cpu(
++			  ((struct thunderbolt_ip_status *)hdr)->status));
++		break;
++	}
++
++out:
++	TRACE_FUNC_EXIT();
++}
++
++void nhi_dealloc_etherdev(struct net_device *net_dev)
++{
++	TRACE_FUNC_ENTRY();
++
++	unregister_netdev(net_dev);
++	free_netdev(net_dev);
++
++	TRACE_FUNC_EXIT();
++}
++
++struct net_device *nhi_alloc_etherdev(struct tbt_nhi_ctxt *nhi_ctxt,
++				      u8 port_num, struct genl_info *info)
++{
++	struct tbt_port *port;
++	struct net_device *net_dev = alloc_etherdev(sizeof(struct tbt_port));
++	u32 hash;
++
++	TRACE_FUNC_ENTRY();
++
++	if (!net_dev)
++		goto out;
++
++	SET_NETDEV_DEV(net_dev, &nhi_ctxt->pdev->dev);
++
++	port = netdev_priv(net_dev);
++	port->nhi_ctxt = nhi_ctxt;
++	port->net_dev = net_dev;
++	nla_memcpy(&(port->route_str),
++		   info->attrs[NHI_ATTR_LOCAL_ROUTE_STRING],
++		   sizeof(port->route_str));
++	nla_memcpy(port->inter_domain_local_unique_id,
++		   info->attrs[NHI_ATTR_LOCAL_UNIQUE_ID],
++		   sizeof(port->inter_domain_local_unique_id));
++	nla_memcpy(port->inter_domain_remote_unique_id,
++		   info->attrs[NHI_ATTR_REMOTE_UNIQUE_ID],
++		   sizeof(port->inter_domain_remote_unique_id));
++	port->local_depth = nla_get_u8(info->attrs[NHI_ATTR_LOCAL_DEPTH]);
++	port->num = port_num;
++	port->local_path = PATH_FROM_PORT(nhi_ctxt->num_paths, port_num);
++
++	port->msg_enable = netif_msg_init(debug, DEFAULT_MSG_ENABLE);
++
++	net_dev->addr_assign_type = NET_ADDR_PERM;
++	/* unicast and locally administred MAC */
++	net_dev->dev_addr[0] = (port_num << 4) | 0x02;
++	hash = arch_fast_hash2(port->inter_domain_local_unique_id,
++			       ARRAY_SIZE(port->inter_domain_local_unique_id),
++			       0);
++	memcpy(net_dev->dev_addr + 1, &hash, sizeof(hash));
++	hash = arch_fast_hash2(port->inter_domain_local_unique_id,
++			       ARRAY_SIZE(port->inter_domain_local_unique_id),
++			       hash);
++	net_dev->dev_addr[5] = hash & 0xff;
++
++	snprintf(net_dev->name, sizeof(net_dev->name), "tbtnet%%dp%hhu",
++		 port_num);
++
++	net_dev->netdev_ops = &tbt_netdev_ops;
++
++	netif_napi_add(net_dev, &port->napi, tbt_net_poll, NAPI_POLL_WEIGHT);
++
++	net_dev->hw_features = NETIF_F_SG |
++			       NETIF_F_ALL_TSO |
++			       NETIF_F_UFO |
++			       NETIF_F_GRO |
++			       NETIF_F_IP_CSUM |
++			       NETIF_F_IPV6_CSUM;
++	net_dev->features = net_dev->hw_features;
++	if (nhi_ctxt->pci_using_dac)
++		net_dev->features |= NETIF_F_HIGHDMA;
++
++	INIT_DELAYED_WORK(&port->login_retry_work, login_retry);
++	INIT_WORK(&port->login_response_work, login_response);
++	INIT_WORK(&port->logout_work, logout);
++	INIT_WORK(&port->status_reply_work, status_reply);
++	INIT_WORK(&port->approve_inter_domain_work, approve_inter_domain);
++
++	net_dev->ethtool_ops = &tbt_net_ethtool_ops;
++
++	if (register_netdev(net_dev))
++		goto err_register;
++
++	netif_carrier_off(net_dev);
++
++	netif_info(port, probe, net_dev,
++		   "Thunderbolt(TM) Networking port %u - MAC Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
++		   port_num,
++		   net_dev->dev_addr[0], net_dev->dev_addr[1],
++		   net_dev->dev_addr[2], net_dev->dev_addr[3],
++		   net_dev->dev_addr[4], net_dev->dev_addr[5]);
++
++	goto out;
++
++err_register:
++	free_netdev(net_dev);
++	net_dev = NULL;
++out:
++	TRACE_FUNC_EXIT();
++	return net_dev;
++}
+diff -uprN linux/drivers/thunderbolt/net.h src/net.h
+--- linux/drivers/thunderbolt/net.h	1970-01-01 02:00:00.000000000 +0200
++++ src/net.h	2015-02-24 14:20:56.000000000 +0200
+@@ -0,0 +1,232 @@
++/*******************************************************************************
++ *
++ * Intel Thunderbolt(TM) driver
++ * Copyright(c) 2014 - 2015 Intel Corporation.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ * The full GNU General Public License is included in this distribution in
++ * the file called "COPYING".
++ *
++ * Contact Information:
++ * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
++ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
++ *
++ ******************************************************************************/
++
++#ifndef NET_H_
++#define NET_H_
++
++#include <linux/pci.h>
++#include <linux/netdevice.h>
++#include <net/genetlink.h>
++#include <linux/mutex.h>
++#include <linux/semaphore.h>
++
++#define TRACE_FUNC_ENTRY() pr_debug_ratelimited("Entry to %s\n", __func__)
++#define TRACE_FUNC_EXIT() pr_debug_ratelimited("Exit from %s\n", __func__)
++
++#define APPLE_THUNDERBOLT_IP_PROTOCOL_UUID	{cpu_to_be32(0x9E588F79),\
++						 cpu_to_be32(0x478A1636),\
++						 cpu_to_be32(0x6456C697),\
++						 cpu_to_be32(0xDDC820A9)}
++
++/*
++ * Each physical port contains 2 channels.
++ * Devices are exposed to user based on physical ports.
++ */
++#define CHANNELS_PER_PORT_NUM 2
++/*
++ * Calculate host physcial port number (Zero-based numbering) from
++ * host channel/link which starts from 1.
++ */
++#define PORT_NUM_FROM_LINK(link) (((link) - 1) / CHANNELS_PER_PORT_NUM)
++
++#define TBT_TX_RING_FULL(prod, cons, size) ((((prod) + 1) % (size)) == (cons))
++#define TBT_TX_RING_EMPTY(prod, cons) ((prod) == (cons))
++#define TBT_RX_RING_FULL(prod, cons) ((prod) == (cons))
++#define TBT_RX_RING_EMPTY(prod, cons, size) ((((cons) + 1) % (size)) == (prod))
++
++#define PATH_FROM_PORT(num_paths, port_num) (((num_paths) - 1) - (port_num))
++
++/* PDF values for SW<->FW communication in raw mode */
++enum pdf_value {
++	PDF_READ_CONFIGURATION_REGISTERS = 1,
++	PDF_WRITE_CONFIGURATION_REGISTERS,
++	PDF_ERROR_NOTIFICATION,
++	PDF_ERROR_ACKNOWLEDGEMENT,
++	PDF_PLUG_EVENT_NOTIFICATION,
++	PDF_INTER_DOMAIN_REQUEST,
++	PDF_INTER_DOMAIN_RESPONSE,
++	PDF_CM_OVERRIDE,
++	PDF_RESET_CIO_SWITCH,
++	PDF_FW_TO_SW_NOTIFICATION,
++	PDF_SW_TO_FW_COMMAND,
++	PDF_FW_TO_SW_RESPONSE
++};
++
++/* SW->FW commands */
++enum {
++	GET_THUNDERBOLT_TOPOLOGY_COMMAND_CODE = 1,
++	GET_VIDEO_RESOURCES_DATA_COMMAND_CODE,
++	DRIVER_READY_COMMAND_CODE,
++	APPROVE_PCI_CONNECTION_COMMAND_CODE,
++	CHALLENGE_PCI_CONNECTION_COMMAND_CODE,
++	ADD_DEVICE_AND_KEY_COMMAND_CODE,
++	APPROVE_INTER_DOMAIN_CONNECTION_COMMAND_CODE = 0x10
++};
++
++/* SW -> FW mailbox commands */
++enum {
++	STOP_CM_ACTIVITY_COMMAND_CODE,
++	ENTER_PASS_THROUGH_MODE_COMMAND_CODE,
++	ENTER_CM_OWNERSHIP_MODE_COMMAND_CODE,
++	DRIVER_LOADED_COMMAND_CODE,
++	DRIVER_UNLOADED_COMMAND_CODE,
++	SAVE_CURRENT_CONNECTED_DEVICES_COMMAND_CODE,
++	DISCONNECT_PCIE_PATHS_COMMAND_CODE,
++	DRIVER_UNLOADS_AND_DISCONNECT_INTER_DOMAIN_PATHS_COMMAND_CODE,
++	DISCONNECT_PORT_A_INTER_DOMAIN_PATH = 0x10,
++	DISCONNECT_PORT_B_INTER_DOMAIN_PATH,
++	DP_TUNNEL_MODE_IN_ORDER_PER_CAPABILITIES = 0x1E,
++	DP_TUNNEL_MODE_MAXIMIZE_SNK_SRC_TUNNELS,
++	SET_FW_MODE_FD1_D1_CERT_COMMAND_CODE = 0x20,
++	SET_FW_MODE_FD1_D1_ALL_COMMAND_CODE,
++	SET_FW_MODE_FD1_DA_CERT_COMMAND_CODE,
++	SET_FW_MODE_FD1_DA_ALL_COMMAND_CODE,
++	SET_FW_MODE_FDA_D1_CERT_COMMAND_CODE,
++	SET_FW_MODE_FDA_D1_ALL_COMMAND_CODE,
++	SET_FW_MODE_FDA_DA_CERT_COMMAND_CODE,
++	SET_FW_MODE_FDA_DA_ALL_COMMAND_CODE
++};
++
++struct route_string {
++	u32 hi;
++	u32 lo;
++};
++
++struct route_string_be {
++	__be32 hi;
++	__be32 lo;
++};
++
++#define L0_PORT_NUM(cpu_route_str_lo) ((cpu_route_str_lo) & GENMASK(5, 0))
++
++typedef u32 unique_id[4];
++typedef __be32 unique_id_be[4];
++
++/* NHI genetlink attributes */
++enum {
++	NHI_ATTR_UNSPEC,
++	NHI_ATTR_DRIVER_VERSION,
++	NHI_ATTR_NVM_VER_OFFSET,
++	NHI_ATTR_NUM_PORTS,
++	NHI_ATTR_DMA_PORT,
++	NHI_ATTR_MAILBOX_CMD,
++	NHI_ATTR_PDF,
++	NHI_ATTR_MSG_TO_ICM,
++	NHI_ATTR_MSG_FROM_ICM,
++	NHI_ATTR_LOCAL_ROUTE_STRING,
++	NHI_ATTR_LOCAL_UNIQUE_ID,
++	NHI_ATTR_REMOTE_UNIQUE_ID,
++	NHI_ATTR_LOCAL_DEPTH,
++	__NHI_ATTR_MAX,
++};
++#define NHI_ATTR_MAX (__NHI_ATTR_MAX - 1)
++
++/* ThunderboltIP Packet Types */
++enum thunderbolt_ip_packet_type {
++	THUNDERBOLT_IP_LOGIN_TYPE,
++	THUNDERBOLT_IP_LOGIN_RESPONSE_TYPE,
++	THUNDERBOLT_IP_LOGOUT_TYPE,
++	THUNDERBOLT_IP_STATUS_TYPE
++};
++
++struct thunderbolt_ip_header {
++	struct route_string_be route_str;
++	__be32 attributes;
++#define HDR_ATTR_LEN_SHIFT	0
++#define HDR_ATTR_LEN_MASK	GENMASK(5, HDR_ATTR_LEN_SHIFT)
++#define HDR_ATTR_SEQ_NUM_SHIFT	27
++#define HDR_ATTR_SEQ_NUM_MASK	GENMASK(28, HDR_ATTR_SEQ_NUM_SHIFT)
++	unique_id_be apple_tbt_ip_proto_uuid;
++	unique_id_be initiator_uuid;
++	unique_id_be target_uuid;
++	__be32 packet_type;
++	__be32 command_id;
++};
++
++enum medium_status {
++	/* Handle cable disconnection or peer down */
++	MEDIUM_DISCONNECTED,
++	/* Connection is fully established */
++	MEDIUM_CONNECTED,
++	/*  Awaiting for being approved by user-space module */
++	MEDIUM_READY_FOR_APPROVAL,
++	/* Approved by user-space, awaiting for establishment flow to finish */
++	MEDIUM_READY_FOR_CONNECTION,
++	NUM_MEDIUM_STATUSES
++};
++
++struct port_net_dev {
++	struct net_device *net_dev;
++	enum medium_status medium_sts;
++	struct mutex state_mutex;
++};
++
++/**
++ * struct tbt_nhi_ctxt - thunderbolt native host interface context
++ */
++struct tbt_nhi_ctxt {
++	bool icm_enabled;	/* icm_enabled must be the first field */
++	bool d0_exit;
++	struct list_head node;
++	struct pci_dev *pdev;
++	void __iomem *iobase;
++	struct msix_entry *msix_entries;
++	struct tbt_icm_ring_shared_memory *icm_ring_shared_mem;
++	dma_addr_t icm_ring_shared_mem_dma_addr;
++	struct semaphore send_sem;
++	struct mutex mailbox_mutex;
++	struct mutex d0_exit_send_mutex;
++	struct mutex d0_exit_mailbox_mutex;
++	spinlock_t lock;
++	struct work_struct icm_msgs_work;
++	struct port_net_dev *net_devices;
++	struct workqueue_struct *net_workqueue;
++	u32 id;
++	u32 num_paths;
++	u16 nvm_ver_offset;
++	u8 num_vectors;
++	u8 num_ports;
++	u8 dma_port;
++	bool nvm_auth_on_boot : 1;
++	bool wait_for_icm_resp : 1;
++	bool ignore_icm_resp : 1;
++	bool pci_using_dac : 1;
++};
++
++struct net_device *nhi_alloc_etherdev(struct tbt_nhi_ctxt *nhi_ctxt,
++				      u8 port_num, struct genl_info *info);
++void nhi_dealloc_etherdev(struct net_device *net_dev);
++void negotiation_events(struct net_device *net_dev,
++			enum medium_status medium_sts);
++void negotiation_messages(struct net_device *net_dev,
++			  struct thunderbolt_ip_header *hdr);
++int nhi_send_message(struct tbt_nhi_ctxt *nhi_ctxt, enum pdf_value pdf,
++		      u32 msg_len, const u8 *msg, bool ignore_icm_resp);
++int nhi_mailbox(struct tbt_nhi_ctxt *nhi_ctxt, u32 cmd, bool deinit);
++void tbt_net_rx_msi(struct net_device *net_dev);
++void tbt_net_tx_msi(struct net_device *net_dev);
++
++#endif
+diff -uprN linux/drivers/thunderbolt/nhi.c src/nhi.c
+--- linux/drivers/thunderbolt/nhi.c	2015-02-24 14:12:45.779120000 +0200
++++ src/nhi.c	2015-02-24 14:20:56.000000000 +0200
+@@ -1,5 +1,5 @@
+ /*
+- * Thunderbolt Cactus Ridge driver - NHI driver
++ * Thunderbolt driver - NHI driver
+  *
+  * The NHI (native host interface) is the pci device that allows us to send and
+  * receive frames from the thunderbolt bus.
+@@ -16,6 +16,7 @@
+ #include <linux/dmi.h>
+ 
+ #include "nhi.h"
++#include "icm_nhi.h"
+ #include "nhi_regs.h"
+ #include "tb.h"
+ 
+@@ -497,7 +498,9 @@ static int nhi_suspend_noirq(struct devi
+ {
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ 	struct tb *tb = pci_get_drvdata(pdev);
+-	thunderbolt_suspend(tb);
++
++	if (!tb->icm_enabled)
++		thunderbolt_suspend(tb);
+ 	return 0;
+ }
+ 
+@@ -505,7 +508,9 @@ static int nhi_resume_noirq(struct devic
+ {
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ 	struct tb *tb = pci_get_drvdata(pdev);
+-	thunderbolt_resume(tb);
++
++	if (!tb->icm_enabled)
++		thunderbolt_resume(tb);
+ 	return 0;
+ }
+ 
+@@ -534,8 +539,7 @@ static void nhi_shutdown(struct tb_nhi *
+ 
+ static int nhi_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ {
+-	struct tb_nhi *nhi;
+-	struct tb *tb;
++	void __iomem *iobase;
+ 	int res;
+ 
+ 	res = pcim_enable_device(pdev);
+@@ -544,65 +548,85 @@ static int nhi_probe(struct pci_dev *pde
+ 		return res;
+ 	}
+ 
+-	res = pci_enable_msi(pdev);
+-	if (res) {
+-		dev_err(&pdev->dev, "cannot enable MSI, aborting\n");
+-		return res;
+-	}
+-
+-	res = pcim_iomap_regions(pdev, 1 << 0, "thunderbolt");
++	res = pcim_iomap_regions(pdev, 1 << NHI_MMIO_BAR, pci_name(pdev));
+ 	if (res) {
+ 		dev_err(&pdev->dev, "cannot obtain PCI resources, aborting\n");
+ 		return res;
+ 	}
+ 
+-	nhi = devm_kzalloc(&pdev->dev, sizeof(*nhi), GFP_KERNEL);
+-	if (!nhi)
+-		return -ENOMEM;
+-
+-	nhi->pdev = pdev;
+-	/* cannot fail - table is allocated bin pcim_iomap_regions */
+-	nhi->iobase = pcim_iomap_table(pdev)[0];
+-	nhi->hop_count = ioread32(nhi->iobase + REG_HOP_COUNT) & 0x3ff;
+-	if (nhi->hop_count != 12)
+-		dev_warn(&pdev->dev, "unexpected hop count: %d\n",
+-			 nhi->hop_count);
+-	INIT_WORK(&nhi->interrupt_work, nhi_interrupt_work);
+-
+-	nhi->tx_rings = devm_kcalloc(&pdev->dev, nhi->hop_count,
+-				     sizeof(*nhi->tx_rings), GFP_KERNEL);
+-	nhi->rx_rings = devm_kcalloc(&pdev->dev, nhi->hop_count,
+-				     sizeof(*nhi->rx_rings), GFP_KERNEL);
+-	if (!nhi->tx_rings || !nhi->rx_rings)
+-		return -ENOMEM;
+-
+-	nhi_disable_interrupts(nhi); /* In case someone left them on. */
+-	res = devm_request_irq(&pdev->dev, pdev->irq, nhi_msi,
+-			       IRQF_NO_SUSPEND, /* must work during _noirq */
+-			       "thunderbolt", nhi);
+-	if (res) {
+-		dev_err(&pdev->dev, "request_irq failed, aborting\n");
+-		return res;
+-	}
++	/* cannot fail - table is allocated in pcim_iomap_regions */
++	iobase = pcim_iomap_table(pdev)[NHI_MMIO_BAR];
++	/* check if ICM is running */
++	if (DEVICE_DATA_ICM_CAPABLITY(id->driver_data)
++	    && (ioread32(iobase + REG_FW_STS) & REG_FW_STS_ICM_EN)) {
++		res = icm_nhi_init(pdev, id, iobase);
++		if (res)
++			return res;
++	} else if (dmi_match(DMI_BOARD_VENDOR, "Apple Inc.")) {
++		struct tb_nhi *nhi;
++		struct tb *tb;
++
++		BUILD_BUG_ON(offsetof(struct tb, icm_enabled) != 0);
++
++		res = pci_enable_msi(pdev);
++		if (res) {
++			dev_err(&pdev->dev, "cannot enable MSI, aborting\n");
++			return res;
++		}
+ 
+-	mutex_init(&nhi->lock);
++		nhi = devm_kzalloc(&pdev->dev, sizeof(*nhi), GFP_KERNEL);
++		if (!nhi)
++			return -ENOMEM;
++
++		nhi->pdev = pdev;
++		nhi->iobase = iobase;
++		nhi->hop_count = ioread32(nhi->iobase + REG_HOP_COUNT) & 0x3ff;
++		if (nhi->hop_count != 12)
++			dev_warn(&pdev->dev, "unexpected hop count: %d\n",
++				 nhi->hop_count);
++		INIT_WORK(&nhi->interrupt_work, nhi_interrupt_work);
++
++		nhi->tx_rings = devm_kcalloc(&pdev->dev, nhi->hop_count,
++					     sizeof(*nhi->tx_rings),
++					     GFP_KERNEL);
++		nhi->rx_rings = devm_kcalloc(&pdev->dev, nhi->hop_count,
++					     sizeof(*nhi->rx_rings),
++					     GFP_KERNEL);
++		if (!nhi->tx_rings || !nhi->rx_rings)
++			return -ENOMEM;
++
++		nhi_disable_interrupts(nhi); /* In case someone left them on */
++		res = devm_request_irq(&pdev->dev, pdev->irq, nhi_msi,
++				       /* must work during _noirq */
++				       IRQF_NO_SUSPEND,
++				       DRV_NAME, nhi);
++		if (res) {
++			dev_err(&pdev->dev, "request_irq failed, aborting\n");
++			return res;
++		}
+ 
+-	pci_set_master(pdev);
++		mutex_init(&nhi->lock);
+ 
+-	/* magic value - clock related? */
+-	iowrite32(3906250 / 10000, nhi->iobase + 0x38c00);
++		pci_set_master(pdev);
+ 
+-	dev_info(&nhi->pdev->dev, "NHI initialized, starting thunderbolt\n");
+-	tb = thunderbolt_alloc_and_start(nhi);
+-	if (!tb) {
+-		/*
+-		 * At this point the RX/TX rings might already have been
+-		 * activated. Do a proper shutdown.
+-		 */
+-		nhi_shutdown(nhi);
+-		return -EIO;
+-	}
+-	pci_set_drvdata(pdev, tb);
++		/* magic value - clock related? */
++		iowrite32(3906250 / 10000,
++			  nhi->iobase + REG_INT_THROTTLING_RATE);
++
++		dev_info(&nhi->pdev->dev,
++			 "NHI initialized, starting thunderbolt\n");
++		tb = thunderbolt_alloc_and_start(nhi);
++		if (!tb) {
++			/*
++			 * At this point the RX/TX rings might already have
++			 * been activated. Do a proper shutdown.
++			 */
++			nhi_shutdown(nhi);
++			return -EIO;
++		}
++		pci_set_drvdata(pdev, tb);
++	} else
++		return -ENOSYS;
+ 
+ 	return 0;
+ }
+@@ -610,9 +634,15 @@ static int nhi_probe(struct pci_dev *pde
+ static void nhi_remove(struct pci_dev *pdev)
+ {
+ 	struct tb *tb = pci_get_drvdata(pdev);
+-	struct tb_nhi *nhi = tb->nhi;
+-	thunderbolt_shutdown_and_free(tb);
+-	nhi_shutdown(nhi);
++
++	if (!tb->icm_enabled) {
++		struct tb_nhi *nhi = tb->nhi;
++
++		thunderbolt_shutdown_and_free(tb);
++		nhi_shutdown(nhi);
++	} else {
++		icm_nhi_deinit(pdev);
++	}
+ }
+ 
+ /*
+@@ -621,6 +651,7 @@ static void nhi_remove(struct pci_dev *p
+  * resume_noirq until we are done.
+  */
+ static const struct dev_pm_ops nhi_pm_ops = {
++	SET_SYSTEM_SLEEP_PM_OPS(nhi_suspend, nhi_resume)
+ 	.suspend_noirq = nhi_suspend_noirq,
+ 	.resume_noirq = nhi_resume_noirq,
+ 	.freeze_noirq = nhi_suspend_noirq, /*
+@@ -630,44 +661,63 @@ static const struct dev_pm_ops nhi_pm_op
+ 	.restore_noirq = nhi_resume_noirq,
+ };
+ 
+-static struct pci_device_id nhi_ids[] = {
+-	/*
+-	 * We have to specify class, the TB bridges use the same device and
+-	 * vendor (sub)id.
+-	 */
++static const struct pci_device_id nhi_ids[] = {
+ 	{
++		/*
++		 * We have to specify class, the TB Cactus Ridge bridges use
++		 * the same device and vendor (sub)id.
++		 */
+ 		.class = PCI_CLASS_SYSTEM_OTHER << 8, .class_mask = ~0,
+ 		.vendor = PCI_VENDOR_ID_INTEL, .device = 0x1547,
+ 		.subvendor = 0x2222, .subdevice = 0x1111,
+ 	},
+-	{
+-		.class = PCI_CLASS_SYSTEM_OTHER << 8, .class_mask = ~0,
+-		.vendor = PCI_VENDOR_ID_INTEL, .device = 0x156c,
+-		.subvendor = 0x2222, .subdevice = 0x1111,
+-	},
+-	{ 0,}
++	{ PCI_VDEVICE(INTEL, 0x1566), DEVICE_DATA(1, 5, 0xa, false) },/*RR 2C*/
++	{ PCI_VDEVICE(INTEL, 0x1568), DEVICE_DATA(2, 5, 0xa, false) },/*RR 4C*/
++	{ PCI_VDEVICE(INTEL, 0x156a), DEVICE_DATA(1, 5, 0xa, false) },/*FR 2C*/
++	{ PCI_VDEVICE(INTEL, 0x156c), DEVICE_DATA(2, 5, 0xa, false) },/*FR 4C*/
++	{ PCI_VDEVICE(INTEL, 0x1575), DEVICE_DATA(1, 3, 0xa, false) },/*WR 2C*/
++	{ PCI_VDEVICE(INTEL, 0x1577), DEVICE_DATA(1, 5, 0xa, true) }, /*AR 2C*/
++	{ PCI_VDEVICE(INTEL, 0x157d), DEVICE_DATA(2, 5, 0xa, true) }, /*AR 4C*/
++	{ 0, }
+ };
+ 
+ MODULE_DEVICE_TABLE(pci, nhi_ids);
+ MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+ 
+ static struct pci_driver nhi_driver = {
+-	.name = "thunderbolt",
++	.name = DRV_NAME,
+ 	.id_table = nhi_ids,
+ 	.probe = nhi_probe,
+ 	.remove = nhi_remove,
++	.shutdown = icm_nhi_shutdown,
+ 	.driver.pm = &nhi_pm_ops,
+ };
+ 
+ static int __init nhi_init(void)
+ {
+-	if (!dmi_match(DMI_BOARD_VENDOR, "Apple Inc."))
+-		return -ENOSYS;
+-	return pci_register_driver(&nhi_driver);
++	int rc = nhi_genl_register();
++
++	if (rc)
++		goto failure;
++
++	rc = pci_register_driver(&nhi_driver);
++	if (rc)
++		goto failure_genl;
++
++	return 0;
++
++failure_genl:
++	nhi_genl_unregister();
++
++failure:
++	pr_debug("nhi: error %d occurred in %s\n", rc, __func__);
++	return rc;
+ }
+ 
+ static void __exit nhi_unload(void)
+ {
++	nhi_genl_unregister();
+ 	pci_unregister_driver(&nhi_driver);
+ }
+ 
+diff -uprN linux/drivers/thunderbolt/nhi_regs.h src/nhi_regs.h
+--- linux/drivers/thunderbolt/nhi_regs.h	2015-02-24 14:12:45.783108000 +0200
++++ src/nhi_regs.h	2015-02-24 14:20:56.000000000 +0200
+@@ -1,14 +1,26 @@
+ /*
+- * Thunderbolt Cactus Ridge driver - NHI registers
++ * Thunderbolt driver - NHI registers
+  *
+  * Copyright (c) 2014 Andreas Noever <andreas.noever@gmail.com>
+  */
+ 
+-#ifndef DSL3510_REGS_H_
+-#define DSL3510_REGS_H_
++#ifndef NHI_REGS_H_
++#define NHI_REGS_H_
+ 
+ #include <linux/types.h>
+ 
++#define DRV_VERSION "15.2.28.86"
++#define DRV_NAME "thunderbolt"
++
++#define NHI_MMIO_BAR 0
++
++#define TBT_RING_MIN_NUM_BUFFERS 2
++#define TBT_ICM_RING_MAX_FRAME_SIZE 256
++#define TBT_ICM_RING_NUM 0
++#define TBT_RING_MAX_FRAME_SIZE (4 * 1024)
++#define TBT_RING_MAX_FRAME_DATA_SIZE (TBT_RING_MAX_FRAME_SIZE - \
++				      sizeof(struct tbt_frame_header))
++
+ enum ring_flags {
+ 	RING_FLAG_ISOCH_ENABLE = 1 << 27, /* TX only? */
+ 	RING_FLAG_E2E_FLOW_CONTROL = 1 << 28,
+@@ -24,6 +36,13 @@ enum ring_desc_flags {
+ 	RING_DESC_INTERRUPT = 0x8, /* request an interrupt on completion */
+ };
+ 
++enum icm_operation_mode {
++	SAFE_MODE,
++	AUTHENTICATION_MODE_FUNCTIONALITY,
++	ENDPOINT_OPERATION_MODE,
++	FULL_FUNCTIONALITY
++};
++
+ /**
+  * struct ring_desc - TX/RX ring entry
+  *
+@@ -39,6 +58,44 @@ struct ring_desc {
+ 	u32 time; /* write zero */
+ } __packed;
+ 
++/**
++ * struct tbt_buf_desc - TX/RX ring buffer descriptor
++ *
++ * This is same as struct ring_desc, but without the use of bitfields.
++  */
++struct tbt_buf_desc {
++	__le64 phys;
++	__le32 attributes;
++	__le32 time;
++};
++
++#define DESC_ATTR_LEN_SHIFT		0
++#define DESC_ATTR_LEN_MASK		GENMASK(11, DESC_ATTR_LEN_SHIFT)
++#define DESC_ATTR_EOF_SHIFT		12
++#define DESC_ATTR_EOF_MASK		GENMASK(15, DESC_ATTR_EOF_SHIFT)
++#define DESC_ATTR_SOF_SHIFT		16
++#define DESC_ATTR_SOF_MASK		GENMASK(19, DESC_ATTR_SOF_SHIFT)
++#define DESC_ATTR_TX_ISOCH_DMA_EN	BIT(20)	/* TX */
++#define DESC_ATTR_RX_CRC_ERR		BIT(20)	/* RX after use */
++#define DESC_ATTR_DESC_DONE		BIT(21)
++#define DESC_ATTR_REQ_STS		BIT(22)	/* TX and RX before use */
++#define DESC_ATTR_RX_BUF_OVRN_ERR	BIT(22)	/* RX after use */
++#define DESC_ATTR_INT_EN		BIT(23)
++#define DESC_ATTR_OFFSET_SHIFT		24
++#define DESC_ATTR_OFFSET_MASK		GENMASK(31, DESC_ATTR_OFFSET_SHIFT)
++
++#define TBT_ICM_RING_NUM_TX_BUFS TBT_RING_MIN_NUM_BUFFERS
++#define TBT_ICM_RING_NUM_RX_BUFS ((PAGE_SIZE - (TBT_ICM_RING_NUM_TX_BUFS * \
++	(sizeof(struct tbt_buf_desc) + TBT_ICM_RING_MAX_FRAME_SIZE))) / \
++	(sizeof(struct tbt_buf_desc) + TBT_ICM_RING_MAX_FRAME_SIZE))
++/* struct tbt_icm_ring_shared_memory - memory area for DMA */
++struct tbt_icm_ring_shared_memory {
++	u8 tx_buf[TBT_ICM_RING_NUM_TX_BUFS][TBT_ICM_RING_MAX_FRAME_SIZE];
++	u8 rx_buf[TBT_ICM_RING_NUM_RX_BUFS][TBT_ICM_RING_MAX_FRAME_SIZE];
++	struct tbt_buf_desc tx_buf_desc[TBT_ICM_RING_NUM_TX_BUFS];
++	struct tbt_buf_desc rx_buf_desc[TBT_ICM_RING_NUM_RX_BUFS];
++} __aligned(TBT_ICM_RING_MAX_FRAME_SIZE);
++
+ /* NHI registers in bar 0 */
+ 
+ /*
+@@ -60,6 +117,20 @@ struct ring_desc {
+  */
+ #define REG_RX_RING_BASE	0x08000
+ 
++#define REG_RING_STEP			16
++#define REG_RING_PHYS_LO_OFFSET		0
++#define REG_RING_PHYS_HI_OFFSET		4
++#define REG_RING_CONS_PROD_OFFSET	8	/* cons - RO, prod - RW */
++#define REG_RING_CONS_SHIFT		0
++#define REG_RING_CONS_MASK		GENMASK(15, REG_RING_CONS_SHIFT)
++#define REG_RING_PROD_SHIFT		16
++#define REG_RING_PROD_MASK		GENMASK(31, REG_RING_PROD_SHIFT)
++#define REG_RING_SIZE_OFFSET		12
++#define REG_RING_SIZE_SHIFT		0
++#define REG_RING_SIZE_MASK		GENMASK(15, REG_RING_SIZE_SHIFT)
++#define REG_RING_BUF_SIZE_SHIFT		16
++#define REG_RING_BUF_SIZE_MASK		GENMASK(27, REG_RING_BUF_SIZE_SHIFT)
++
+ /*
+  * 32 bytes per entry, one entry for every hop (REG_HOP_COUNT)
+  * 00: enum_ring_flags
+@@ -77,6 +148,19 @@ struct ring_desc {
+  * ..: unknown
+  */
+ #define REG_RX_OPTIONS_BASE	0x29800
++#define REG_RX_OPTS_TX_E2E_HOP_ID_SHIFT	12
++#define REG_RX_OPTS_TX_E2E_HOP_ID_MASK	\
++				GENMASK(22, REG_RX_OPTS_TX_E2E_HOP_ID_SHIFT)
++#define REG_RX_OPTS_MASK_OFFSET		4
++#define REG_RX_OPTS_MASK_EOF_SHIFT	0
++#define REG_RX_OPTS_MASK_EOF_MASK	GENMASK(15, REG_RX_OPTS_MASK_EOF_SHIFT)
++#define REG_RX_OPTS_MASK_SOF_SHIFT	16
++#define REG_RX_OPTS_MASK_SOF_MASK	GENMASK(31, REG_RX_OPTS_MASK_SOF_SHIFT)
++
++#define REG_OPTS_STEP			32
++#define REG_OPTS_E2E_EN			BIT(28)
++#define REG_OPTS_RAW			BIT(30)
++#define REG_OPTS_VALID			BIT(31)
+ 
+ /*
+  * three bitfields: tx, rx, rx overflow
+@@ -86,6 +170,7 @@ struct ring_desc {
+  */
+ #define REG_RING_NOTIFY_BASE	0x37800
+ #define RING_NOTIFY_REG_COUNT(nhi) ((31 + 3 * nhi->hop_count) / 32)
++#define REG_RING_NOTIFY_STEP	4
+ 
+ /*
+  * two bitfields: rx, tx
+@@ -94,8 +179,51 @@ struct ring_desc {
+  */
+ #define REG_RING_INTERRUPT_BASE	0x38200
+ #define RING_INTERRUPT_REG_COUNT(nhi) ((31 + 2 * nhi->hop_count) / 32)
++#define REG_RING_INT_TX_PROCESSED(ring_num)		BIT(ring_num)
++#define REG_RING_INT_RX_PROCESSED(ring_num, num_paths)	BIT((ring_num) + \
++							    (num_paths))
++#define REG_RING_INTERRUPT_STEP	4
++
++#define REG_INT_THROTTLING_RATE	0x38c00
++#define REG_INT_THROTTLING_RATE_STEP	4
++#define NUM_INT_VECTORS			16
++#define USEC_TO_256_NSECS(usec) DIV_ROUND_UP((usec) * NSEC_PER_USEC, 256)
++
++#define REG_INT_VEC_ALLOC_BASE	0x38c40
++#define REG_INT_VEC_ALLOC_STEP		4
++#define REG_INT_VEC_ALLOC_FIELD_BITS	4
++#define REG_INT_VEC_ALLOC_FIELD_MASK	(BIT(REG_INT_VEC_ALLOC_FIELD_BITS) - 1)
++#define REG_INT_VEC_ALLOC_PER_REG	((BITS_PER_BYTE * sizeof(u32)) / \
++					 REG_INT_VEC_ALLOC_FIELD_BITS)
+ 
+ /* The last 11 bits contain the number of hops supported by the NHI port. */
+ #define REG_HOP_COUNT		0x39640
++#define REG_HOP_COUNT_TOTAL_PATHS_MASK	GENMASK(10, 0)
++
++#define REG_HOST_INTERFACE_RST	0x39858
++
++#define REG_DMA_MISC		0x39864
++#define REG_DMA_MISC_INT_AUTO_CLEAR	BIT(2)
++
++/* mailbox command from SW */
++#define REG_INMAIL_CMD		0x39904
++#define REG_INMAIL_CMD_CMD_SHIFT	0
++#define REG_INMAIL_CMD_CMD_MASK		GENMASK(7, REG_INMAIL_CMD_CMD_SHIFT)
++#define REG_INMAIL_CMD_ERROR		BIT(30)
++#define REG_INMAIL_CMD_REQUEST		BIT(31)
++
++/* mailbox command from FW */
++#define REG_OUTMAIL_CMD		0x3990C
++#define REG_OUTMAIL_CMD_STATUS_SHIFT	0
++#define REG_OUTMAIL_CMD_STATUS_MASK	\
++				GENMASK(7, REG_OUTMAIL_CMD_STATUS_SHIFT)
++#define REG_OUTMAIL_CMD_OP_MODE_SHIFT	8
++#define REG_OUTMAIL_CMD_OP_MODE_MASK	\
++				GENMASK(11, REG_OUTMAIL_CMD_OP_MODE_SHIFT)
++#define REG_OUTMAIL_CMD_REQUEST		BIT(31)
++
++#define REG_FW_STS		0x39944
++#define REG_FW_STS_ICM_EN		GENMASK(1, 0)
++#define REG_FW_STS_NVM_AUTH_DONE	BIT(31)
+ 
+ #endif
+diff -uprN linux/drivers/thunderbolt/tb.h src/tb.h
+--- linux/drivers/thunderbolt/tb.h	2015-02-24 14:12:45.790111000 +0200
++++ src/tb.h	2015-02-24 14:20:56.000000000 +0200
+@@ -97,6 +97,7 @@ struct tb_path {
+  * struct tb - main thunderbolt bus structure
+  */
+ struct tb {
++	bool icm_enabled;	/* icm_enabled must be the first field */
+ 	struct mutex lock;	/*
+ 				 * Big lock. Must be held when accessing cfg or
+ 				 * any struct tb_switch / struct tb_port.
