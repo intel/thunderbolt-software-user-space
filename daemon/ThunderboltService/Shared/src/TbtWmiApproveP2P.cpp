@@ -27,16 +27,45 @@
 #include "TbtWmiApproveP2P.h"
 #include "MessagesWrapper.h"
 #include "UniqueID.h"
+#include "logger.h"
+
+const std::wstring TbtWmiApproveP2P::InstanceName     = L"InstanceName";
+const std::wstring TbtWmiApproveP2P::LocalRouteString = L"LocalRouteString";
+const std::wstring TbtWmiApproveP2P::LocalUniqueID    = L"LocalUniqueID";
+const std::wstring TbtWmiApproveP2P::RemoteUniqueID   = L"RemoteUniqueID";
+const std::wstring TbtWmiApproveP2P::PeerOS           = L"PeerOS";
+const std::wstring TbtWmiApproveP2P::LocalDepth       = L"LocalDepth";
+const std::wstring TbtWmiApproveP2P::EnableFullE2E    = L"EnableFullE2E";
+const std::wstring TbtWmiApproveP2P::MatchFragmentsID = L"MatchFragmentsID";
+
+namespace // anon. namespace
+{
+/**
+ * \brief used internally to log the flag status
+ * 
+ * \param[in]  flag
+ * \param[in]  description  description of the flag
+ */
+void logFlag(bool flag, std::string description)
+{
+   std::string infoStr = description + " is set as ";
+   infoStr += (flag ? "enabled" : "disabled");
+   infoStr += " in WMI Approve P2P message to the driver";
+   TbtServiceLogger::LogDebug(infoStr.c_str());
+}
+} // anon. namespace
 
 PropertiesMap TbtWmiApproveP2P::GetWriteableProperties() const
 {
    PropertiesMap Properties;
    
-   Properties[L"LocalRouteString"] = SerializationValue(m_LocalRouteString);
-   Properties[L"LocalUniqueID"] = SerializationValue(m_LocalUniqueID);
-   Properties[L"RemoteUniqueID"] = SerializationValue(m_RemoteUniqueID);
-   Properties[L"PeerOS"] = SerializationValue(m_PeerOS);
-   Properties[L"LocalDepth"] = SerializationValue(m_LocalDepth);
+   Properties[LocalRouteString] = SerializationValue(m_LocalRouteString);
+   Properties[LocalUniqueID] = SerializationValue(m_LocalUniqueID);
+   Properties[RemoteUniqueID] = SerializationValue(m_RemoteUniqueID);
+   Properties[PeerOS] = SerializationValue(m_PeerOS);
+   Properties[LocalDepth] = SerializationValue(m_LocalDepth);
+   Properties[EnableFullE2E] = SerializationValue(m_EnableFullE2E);
+   Properties[MatchFragmentsID] = SerializationValue(m_MatchFragmentsID);
 
    return Properties;
 }
@@ -45,7 +74,7 @@ PropertiesMap TbtWmiApproveP2P::GetReadOnlyProperties() const
 {
    PropertiesMap Properties;
 
-   Properties[L"InstanceName"] = m_InstanceName;
+   Properties[InstanceName] = m_InstanceName;
 
    return Properties;
 }
@@ -65,22 +94,25 @@ std::wstring TbtWmiApproveP2P::GetInstanceName() const
    return m_InstanceName;
 }
 
-void TbtWmiApproveP2P::LoadFromSerializationMap(const PropertiesMap& PropertiesMapToLoad)
+void TbtWmiApproveP2P::LoadFromSerializationMap(const PropertiesMap&)
 {
    throw std::logic_error("The method or operation is not implemented.");
 }
 
-TbtWmiApproveP2P::TbtWmiApproveP2P( const ROUTE_STRING& LocalRouteString, 
-                                    const UniqueID& LocalUniqueID, 
-                                    const UniqueID& RemoteUniqueID, 
-                                    uint32_t PeerOS, 
-                                    uint8_t LocalDepth) :m_PeerOS(PeerOS),
-                                                         m_LocalDepth(LocalDepth)
-                                                         
+TbtWmiApproveP2P::TbtWmiApproveP2P(const ROUTE_STRING& LocalRouteString,
+                                   const UniqueID& LocalUniqueID,
+                                   const UniqueID& RemoteUniqueID,
+                                   uint32_t PeerOS,
+                                   uint8_t LocalDepth,
+                                   bool EnableFullE2E,
+                                   bool MatchFragmentsID)
+   : m_LocalDepth(LocalDepth), m_PeerOS(PeerOS), m_EnableFullE2E(EnableFullE2E), m_MatchFragmentsID(MatchFragmentsID)
 {
    SetLocalRouteString(LocalRouteString);
    SetLocalUniqueID(LocalUniqueID);
    SetRemoteUniqueID(RemoteUniqueID);
+   logFlag(m_EnableFullE2E, "Full E2E support");
+   logFlag(m_MatchFragmentsID, "Match fragments ID");
 }
 
 TbtWmiApproveP2P::TbtWmiApproveP2P()
@@ -112,4 +144,10 @@ void TbtWmiApproveP2P::SetLocalDepth(uint8_t LocalDepth)
 void TbtWmiApproveP2P::SetPeerOs(uint32_t PeerOS)
 {
    m_PeerOS = PeerOS;
+}
+
+void TbtWmiApproveP2P::SetEnableFullE2E(bool EnableFullE2E)
+{
+   m_EnableFullE2E = EnableFullE2E;
+   logFlag(m_EnableFullE2E, "Full E2E support");
 }

@@ -136,7 +136,7 @@ namespace XDomainProperties
       const Property& operator[](std::string key)const; //check in UT if throwing exception
       friend bool operator==(const DirectoryData& lhs, const DirectoryData& rhs);
       friend bool operator!=(const DirectoryData& lhs, const DirectoryData& rhs);
-      bool IsExiest(const std::string& key) const;
+      bool Exists(const std::string& key) const;
       uint32_t GetNumOfEntries() const;
       size_t GetSize()const;
    protected:
@@ -162,14 +162,14 @@ namespace XDomainProperties
       const Property& operator[](const std::string& key)const;
       friend bool operator==(const ChildDirectory& lhs, const ChildDirectory& rhs);
       friend bool operator!=(const ChildDirectory& lhs, const ChildDirectory& rhs);
-      bool IsExiest(const std::string& key) const;
+      bool Exists(const std::string& key) const;
       size_t GetSize() const{ return m_Data.GetSize(); }
    private:
       ChildDirectoryHeader m_Header; //uuid of the directory
       DirectoryData m_Data;
    };
 
-   typedef boost::variant<ChildDirectory, std::vector<uint32_t>, std::string, int32_t > PropertyValue;
+   typedef boost::variant<ChildDirectory, std::vector<uint32_t>, std::string, int32_t> PropertyValue;
 
    /**
     * single property, can be Directory/value/text/data
@@ -224,7 +224,7 @@ namespace XDomainProperties
       uint32_t GetNumOfEntries()const;
       size_t GetSize()const;
       //In case of Directory
-      bool IsExiest(const std::string& key) const;
+      bool Exists(const std::string& key) const;
 
       friend inline bool operator==(const Property& lhs, const Property& rhs){ return lhs.m_Values == rhs.m_Values; };
       friend inline bool operator!=(const Property& lhs, const Property& rhs){ return !operator==(lhs, rhs); };
@@ -252,7 +252,7 @@ namespace XDomainProperties
       uint32_t GetBusType()const { return m_Header.m_BusType; }
       uint8_t GetVersion()const{ return m_Header.m_Version; }
       uint32_t GetNumOfEntries() const { return m_Data.GetNumOfEntries(); }
-      bool IsExiest(const std::string& key) const{ return m_Data.IsExiest(key); };
+      bool Exists(const std::string& key) const{ return m_Data.Exists(key); };
 	  size_t GetSize() const { return m_Data.GetSize() + DwSizeOf<RootDirectoryHeader>(); };
    private:
       RootDirectoryHeader m_Header;
@@ -279,7 +279,7 @@ namespace XDomainProperties
       uint32_t GetNumOfEntries()const;
       uint32_t GetBlockGeneration() const {return m_BlockGeneration;};
       std::vector<uint8_t> ToBuffer();
-      bool IsExiest(const std::string& key) const{ return m_RooDirectory.IsExiest(key); };
+      bool Exists(const std::string& key) const{ return m_RooDirectory.Exists(key); };
       size_t GetSize() const { return m_RooDirectory.GetSize(); }
    private:
       void BuildFromBuffer(const char* buffer, size_t size);

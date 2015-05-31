@@ -148,6 +148,16 @@ void Controller::SetDmaPort(int port)
 	m_DmaPort = port;
 }
 
+bool Controller::GetSupportsFullE2E()
+{
+   return m_SupportsFullE2E;
+}
+
+void Controller::SetSupportsFullE2E(bool fullE2ESupport)
+{
+   m_SupportsFullE2E = fullE2ESupport;
+}
+
 /**
  * clear all the ports of this controller
  */

@@ -61,11 +61,12 @@ static std::exception_ptr _remote_exception = nullptr;
  * Netlink policy, describe attributes types for driver/daemon messages
  */
 static struct nla_policy nhi_gnl_policy[NHI_ATTR_MAX + 1] = {
-    {},
+    emptyInit<nla_policy>(),
     [NHI_ATTR_DRIVER_VERSION]     = { .type = NLA_STRING, .minlen=0, .maxlen = 0},
     [NHI_ATTR_NVM_VER_OFFSET]     = { .type = NLA_U16,    .minlen=0, .maxlen = 0},
     [NHI_ATTR_NUM_PORTS]          = { .type = NLA_U8,     .minlen=0, .maxlen = 0},
     [NHI_ATTR_DMA_PORT]           = { .type = NLA_U8,     .minlen=0, .maxlen = 0},
+    [NHI_ATTR_SUPPORT_FULL_E2E]   = { .type = NLA_FLAG,   .minlen=0, .maxlen = 0},
     [NHI_ATTR_MAILBOX_CMD]        = { .type = NLA_U32,    .minlen=0, .maxlen = 0},
     [NHI_ATTR_PDF]                = { .type = NLA_U32,    .minlen=0, .maxlen = 0},
     [NHI_ATTR_MSG_TO_ICM]         = { .type = NLA_UNSPEC, .minlen=0, .maxlen = MAX_FW_FRAME_SIZE},
@@ -74,6 +75,8 @@ static struct nla_policy nhi_gnl_policy[NHI_ATTR_MAX + 1] = {
     [NHI_ATTR_LOCAL_UNIQUE_ID]    = { .type = NLA_UNSPEC, .minlen=0, .maxlen = sizeof(UNIQUE_ID)},
     [NHI_ATTR_REMOTE_UNIQUE_ID]   = { .type = NLA_UNSPEC, .minlen=0, .maxlen = sizeof(UNIQUE_ID)},
     [NHI_ATTR_LOCAL_DEPTH]        = { .type = NLA_U8,     .minlen=0, .maxlen = 0},
+    [NHI_ATTR_ENABLE_FULL_E2E]    = { .type = NLA_FLAG,   .minlen=0, .maxlen = 0},
+    [NHI_ATTR_MATCH_FRAME_ID]     = { .type = NLA_FLAG,   .minlen=0, .maxlen = 0},
 };
 
 //ISerializable attribute to generic netlink attributes map converter
@@ -85,6 +88,9 @@ static std::map<std::string,NHI_GENL_ATTR> netlink_properties_converter = {
 		{"LocalUniqueID",NHI_ATTR_LOCAL_UNIQUE_ID},
 		{"RemoteUniqueID",NHI_ATTR_REMOTE_UNIQUE_ID},
 		{"LocalDepth",NHI_ATTR_LOCAL_DEPTH},
+		{"EnableFullE2E",NHI_ATTR_ENABLE_FULL_E2E},
+		{"MatchFragmentsID",NHI_ATTR_MATCH_FRAME_ID},
+
 		{"Command",NHI_ATTR_MAILBOX_CMD},
 
 		//NHI_CMD_MSG_TO_ICM
@@ -181,7 +187,7 @@ GenlWrapper::GenlWrapper(): m_family_id(0),
 		//the ID is a reference for the remote netlink server
 		m_family_id  = genl_ctrl_resolve(m_genl_socket, NHI_GENL_NAME);
 
-		if(m_family_id == NULL) {
+        if(m_family_id == 0) {
 			throw TbtException("can't extract family id, is driver installed and loaded?");
 		}
 
@@ -243,9 +249,7 @@ void GenlWrapper::register_events_callback(events_callback func) {
  * the function is storing remote exception that will be thrown on the thread that
  * waiting for response for netlink sent message
  */
-int GenlWrapper::cb_error_handler(struct sockaddr_nl *nla,
-                                  struct nlmsgerr *nlerr,
-                                  void *arg) {
+int GenlWrapper::cb_error_handler(sockaddr_nl*, nlmsgerr* nlerr, void*) {
 	std::lock_guard<std::mutex> lock(_receive_mutex);
 	TbtServiceLogger::LogError("GenlWrapper::cb_error_handler entry, error arrived");
 	_remote_exception = std::make_exception_ptr(TbtException((std::string("cb_error_handler: netlink error: ") + nl_geterror(nlerr->error)).c_str()));
@@ -256,7 +260,7 @@ int GenlWrapper::cb_error_handler(struct sockaddr_nl *nla,
 /**
  * this callback is called when netlink message sent without errors
  */
-int GenlWrapper::cb_ack(struct nl_msg * msg, void * arg) {
+int GenlWrapper::cb_ack(nl_msg*, void*) {
 	std::lock_guard<std::mutex> lock(_receive_mutex);
 	TbtServiceLogger::LogInfo("Netlink ACK received ");
 	_remote_exception = nullptr;
@@ -267,7 +271,7 @@ int GenlWrapper::cb_ack(struct nl_msg * msg, void * arg) {
 /**
  * handler for valid received messages from driver
  */
-int GenlWrapper::cb_valid(struct nl_msg * msg, void * arg) {
+int GenlWrapper::cb_valid(nl_msg* msg, void*) {
 	TbtServiceLogger::LogInfo("GenlWrapper::cb_valid entry, message arrived");
 	try {
 		{
@@ -314,13 +318,13 @@ int GenlWrapper::cb_valid(struct nl_msg * msg, void * arg) {
       	   return NL_SKIP;
         }
 
-        QueryDriverInformation info = {
-      		  controller_id,
-      		  nla_get_u16(attrs[NHI_ATTR_NVM_VER_OFFSET]),
-      		  nla_get_u8(attrs[NHI_ATTR_NUM_PORTS]),
-      		  nla_get_u8(attrs[NHI_ATTR_DMA_PORT])
+        QueryDriverInformation info = {controller_id,
+                                       nla_get_u16(attrs[NHI_ATTR_NVM_VER_OFFSET]),
+                                       nla_get_u8(attrs[NHI_ATTR_NUM_PORTS]),
+                                       nla_get_u8(attrs[NHI_ATTR_DMA_PORT]),
+                                       {}, // Eliminates g++ warning for missing initializer. It's initialized below
+                                       static_cast<bool>(nla_get_flag(attrs[NHI_ATTR_SUPPORT_FULL_E2E]))};
 
-        };
         auto const& version = nla_get_string(attrs[NHI_ATTR_DRIVER_VERSION]);
         strncpy(info.driver_version,version,sizeof(info.driver_version));
         auto const pInfo = reinterpret_cast<unsigned char*>(&info);
@@ -410,8 +414,8 @@ void GenlWrapper::send_message_sync(uint32_t controller_id,NHI_GENL_CMD cmd, std
 
 			switch (static_cast<SerializationType>(attr.second.which())) {
 				case SerializationType::BOOL:
-					//TODO: check how to put boolean attribute
-					//put_res = nla_put_flag(msg.get(),static_cast<int>(boost::get<bool>(attr.second)));
+					if (boost::get<bool>(attr.second))
+						put_res = nla_put_flag(msg.get(), genl_att_type);
 					break;
 				case SerializationType::BUFFER:
 				{
@@ -502,7 +506,6 @@ void GenlWrapper::send_message_sync(struct nl_msg* msg)
 void GenlWrapper::send_message_async(uint32_t controller_id, NHI_GENL_CMD cmd)
 {
 	TbtServiceLogger::LogInfo("GenlWrapper::send_message entry, sending netlink message: command only");
-	struct nl_msg* msg = nullptr;
   try {
 	  	auto msg = alloc_message(controller_id,cmd);
 	    {

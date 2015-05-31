@@ -39,7 +39,6 @@ class IControllerCommandSender
 {
 public:
 	virtual ~IControllerCommandSender(){};
-	virtual void GetDriverInformation(const controlleriD& Cid, std::wstring& oVersionString, std::wstring& oInstanceName, uint8_t& oDmaPort, uint32_t& nvmOffset) = 0;
 	virtual void SendTbtWmiApproveP2P(const IP2PDevice& Device) const=0;
 	virtual void SendTbtWmiMessageToFW(const controlleriD& Cid, uint8_t* message, size_t messageSize, PDF_VALUE pdf) const = 0;
 	virtual void SendDriverCommand(const controlleriD& cID, SW_TO_FW_INMAILCMD_CODE cmd) const = 0;

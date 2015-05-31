@@ -46,7 +46,7 @@ typedef struct {
 	uint8_t  num_of_ports;
 	uint8_t  dma_port;
 	char driver_version[MAX_DRIVER_VERSION];
-
+   bool supportsFullE2E;
 } QueryDriverInformation;
 
 typedef struct _HostConfiguration

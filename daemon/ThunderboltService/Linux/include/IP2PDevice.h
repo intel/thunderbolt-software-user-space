@@ -51,7 +51,22 @@ public:
 	virtual void HandleInterDomainResponse(const std::vector<uint8_t>& Msg)= 0;
 	virtual void SendPropertiesChangeResponse(const XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION& Msg) const = 0;
 	virtual void SendReadPropertiesResponse(uint32_t Offset, uint8_t sn) const = 0;
-	virtual void StartHandshake() = 0;
+
+   /**
+    * \brief Returns if full-E2E mode should be enabled for this P2P device
+    *
+    * \return true if full-E2E mode should be enabled, otherwise - false
+    */
+   virtual bool GetEnableFullE2E() const = 0;
+
+   /**
+   * \brief Returns if P2P should match fragments ID
+   *
+   * \return true if match fragments ID, otherwise - false
+   */
+   virtual bool GetMatchFragmentsID() const = 0;
+
+   virtual void StartHandshake() = 0;
 	virtual void SendPropertiesChangeRequest() = 0;
 	virtual void OnSystemPreShutdown() = 0;
 	virtual const UniqueID& RemoteRouterUniqueID() const = 0;

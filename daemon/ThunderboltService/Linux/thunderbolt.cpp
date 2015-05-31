@@ -27,7 +27,12 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <dbus-c++/dbus.h>
+#pragma GCC diagnostic pop
+
 #include <memory>
 #include <unistd.h>
 #include <stdlib.h>

@@ -51,14 +51,14 @@ public:
 private:
   //registering shutdown callback, will be called when is system is about
   //to reboot/shutdown
-  void PrepareForShutdownCb(const DBus::SignalMessage &sig)
+  void PrepareForShutdownCb(const DBus::SignalMessage&)
   {
 	  if(_shutdown_cb)
 		  _shutdown_cb();
   }
   //registering shutdown callback, will be called when is system is about
   //to enter sleep mode
-  void PrepareForSleepCb(const DBus::SignalMessage &sig)
+  void PrepareForSleepCb(const DBus::SignalMessage&)
     {
 	  if(_sleep_cb)
 		  _sleep_cb();

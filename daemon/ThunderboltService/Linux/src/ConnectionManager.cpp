@@ -90,7 +90,14 @@ std::string ConnectionManager::GetLocalHostUTF8ComputerName() const {
 std::shared_ptr<IP2PDevice> ConnectionManager::CreateP2PDevice(const controlleriD& ControllerId, const INTER_DOMAIN_CONNECTED_NOTIFICATION& e) const
 {
 	const auto pController = m_Controllers.at(ControllerId);
-	return std::make_shared<P2PDevice>(ControllerId, e.RemoteHostRouterUniqueID, e.LocalRouteString, e.LocalHostRouterUniqueID, GetLocalHostUTF8ComputerName(),static_cast<uint8_t>(e.Depth),(e.Approve == 1));
+   return std::make_shared<P2PDevice>(ControllerId,
+                                      e.RemoteHostRouterUniqueID,
+                                      e.LocalRouteString,
+                                      e.LocalHostRouterUniqueID,
+                                      GetLocalHostUTF8ComputerName(),
+                                      static_cast<uint8_t>(e.Depth),
+                                      (e.Approve == 1),
+                                      pController->GetSupportsFullE2E());
 }
 
 /**

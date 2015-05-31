@@ -46,13 +46,28 @@ std::string P2P_STATE_STRING(P2P_STATE e);
 class P2PDevice : public IP2PDevice
 {
 public:
-	P2PDevice(	const controlleriD& ID,
-				const UniqueID& m_RemoteRouterUniqueID,
-				const ROUTE_STRING& m_LocalRouteString,
-				const UniqueID& m_LocalHostRouterUniqueID,
-				const std::string& m_LocalHostName,
-				uint8_t depth,
-				bool PathEstablished);
+   /**
+    * \brief C-tor for initializing P2PDevice properties
+    *
+    * \param[in]  id                         Controller ID as retrieved from the driver
+    * \param[in]  RemoteRouterUniqueID
+    * \param[in]  LocalRouteString
+    * \param[in]  LocalHostRouterUniqueID
+    * \param[in]  LocalHostName
+    * \param[in]  depth
+    * \param[in]  PathEstablished
+    * \param[in]  supportsFullE2E            True if the (local) controller supports full-E2E mode
+    *
+    * \todo Fill description
+    */
+   P2PDevice(const controlleriD& id,
+             const UniqueID& RemoteRouterUniqueID,
+             const ROUTE_STRING& LocalRouteString,
+             const UniqueID& LocalHostRouterUniqueID,
+             const std::string& LocalHostName,
+             uint8_t depth,
+             bool PathEstablished,
+             bool supportsFullE2E);
 	~P2PDevice();
 
 	//Setters & Getters
@@ -96,6 +111,21 @@ public:
 	void StartHandshake();
 	void SendPropertiesChangeRequest();
 	void OnSystemPreShutdown();
+
+   /**
+    * \brief Returns if full-E2E mode should be enabled for this P2P device
+    *
+    * \return true if full-E2E mode should be enabled, otherwise - false
+    */
+   bool GetEnableFullE2E() const override;
+
+   /**
+   * \brief Returns if P2P should match fragments ID
+   *
+   * \return true if match fragments ID, otherwise - false
+   */
+   bool GetMatchFragmentsID() const override;
+
 private:
 	const std::atomic_bool& PropertiesChangeActive() const { return m_PropertiesChangeActive; }
 	void SetPropertiesChangeActive(bool value) {
@@ -125,10 +155,19 @@ private:
 		Msg.SequenceNumber = 0;
 		UniqueID(XDomainProtocolUUIDBuffer).ToBuffer(Msg.XDomainDiscoveryProtocolUUID);
 	}
+
+   /**
+    * \brief Sets flag property for sending to the remote peer
+    * 
+    * \param[in]  enable  true to tell that flag is supported
+    * \param[in]  flag
+    */
+   void SetFlag(bool enable, uint32_t flag);
+
 	XDOMAIN_PROPERTIES_READ_REQUEST PrepareReadPropertiesRequest(uint32_t Offset);
 	std::vector<uint8_t> PrepareReadPropertiesResponseBuffer(uint32_t Offset, uint8_t Sn) const;
 	std::shared_ptr<XDomainProperties::Properties> GetRemoteHostProperties();
-private:
+
 	const controlleriD m_ControllerID;
 	std::string m_LocalHostName;								//local host name
 	const uint8_t m_Depth;											//depth of the P2P in a chain of devices
@@ -145,4 +184,17 @@ private:
 	bool m_PathEstablished;									    //mark if the thunderbolt p2p path is established
 	std::promise<std::vector<uint8_t>> m_properties_response;	//this is to pass the response to the async request thread
 	std::promise<void> m_properties_change;			//this is to notify the properties change async thread that the request received
+
+   /**
+    * \brief true if full-E2E mode should be enabled for this P2P device
+    *
+    * It means, if the local controller supports it AND we know from the remote XDomainProperties
+    * that it supports it, too. So DON'T set it in the c-tor, before you know about the remote properties
+    */
+   bool m_enableFullE2E = false;
+
+   /**
+   * \brief true if P2P should match fragments ID
+   */
+   bool m_MatchFragmentsID = false;
 };

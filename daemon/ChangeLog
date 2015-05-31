@@ -1,2 +1,6 @@
+ver 15.2.32
+	- Added support for L6000 controllers
+	- Added support for XDOMAIN protocol V2
+	- Improvements during traffic and at connection & disconnection
 ver 15.2.28 (initial version):
 	Added support for Thunderbolt(TM) Networking

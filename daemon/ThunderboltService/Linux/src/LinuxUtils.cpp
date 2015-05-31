@@ -29,9 +29,9 @@
 #include "logger.h"
 
 std::wstring utf8stringToWstring(const std::string& ut8String)
- {
+{
 	return StringToWString(ut8String);
- }
+}
 
 /**
  * this function return if this P2P host support authentication
@@ -39,7 +39,7 @@ std::wstring utf8stringToWstring(const std::string& ut8String)
  *     no need for user approval
  * 1 - supported, currently not implemented
  */
-uint32_t IsAuthenticationSupported()
+int32_t IsAuthenticationSupported()
 {
 	return 0;
 }
@@ -52,9 +52,9 @@ uint32_t ControllerIDToToInt(const controlleriD& ID)
 	wss >> controller_id;
 	return controller_id;
 }
+
 uint32_t GetDeviceIDFromControllerID(const controlleriD& ID)
 {
-
 	uint32_t DevIDInt;
 	std::wstringstream wss;
 

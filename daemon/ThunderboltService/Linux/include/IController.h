@@ -77,6 +77,20 @@ public:
 
     virtual void SetNvmVersionOffset(uint32_t address) = 0;
 
+   /**
+    * \brief Returns if the controller supports full-E2E mode for better P2P performance
+    *
+    * \returns true if full-E2E mode is supported, otherwise - false
+    */
+   virtual bool GetSupportsFullE2E() = 0;
+
+   /**
+    * \brief Sets if the controller supports full-E2E mode for better P2P performance
+    *
+    * \param[in]  fullE2ESupport    true if full-E2E mode is supported
+    */
+   virtual void SetSupportsFullE2E(bool fullE2ESupport) = 0;
+
 	virtual void Clear() = 0;
 
    virtual void AddP2PDevice(uint32_t port, std::shared_ptr<IP2PDevice> pDevice) = 0;

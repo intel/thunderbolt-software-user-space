@@ -91,13 +91,31 @@ public:
 	}
 
 private:
-	static void sendLog(int level, const char* file, const char* func, int line, const char* format, va_list& args)
+        static const char* levelToString(int level)
+        {
+            switch (level)
+            {
+            case LOG_DEBUG:
+                return "Debug";
+            case LOG_INFO:
+                return "Info";
+            case LOG_WARNING:
+                return "Warning";
+            case LOG_ERR:
+                return "Error";
+            default:
+                return "Unknown level";
+            }
+        }
+
+        static void sendLog(int level, const char* file, const char* func, int line, const char* format, va_list& args)
 	{
 		auto id = std::this_thread::get_id();
 		std::stringstream ss;
 		ss << id;
+                printf("%s: ", levelToString(level));
 		vprintf(format, args);
-		printf("      Thread: %s, func %s line %d", ss.str().c_str(), func,line);
+                printf("      Thread: %s, func %s line %d (%s)", ss.str().c_str(), func, line, file);
 		printf("\n");
 		fflush(stdout);
 

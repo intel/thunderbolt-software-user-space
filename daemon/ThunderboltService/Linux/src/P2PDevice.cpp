@@ -31,6 +31,84 @@
 #define XDOMAIN_MAX_RETRIES 60
 #define XDOMAIN_TIMEOUT 1
 
+namespace // anon. namespace
+{
+const std::string network("network");
+const std::string protocolSettings("prtcstns");
+const uint32_t FULL_E2E_SUPPORT_BIT = 1 << 0;
+const uint32_t MATCH_FRAGS_ID_BIT   = 1 << 1;
+
+/**
+ * \brief Implementation function for flags functions below
+ *
+ * \param[in]  prop  XDomainProperties as received from remote peer or as prepared locally
+ * \param[in]  flag
+ *
+ * \returns true if flag key exists and is set in the prop argument, otherwise - false
+ */
+bool FlagImpl(const XDomainProperties::Properties& prop, uint32_t flag)
+{
+   if (!prop.Exists(network))
+   {
+      return false;
+   }
+   const auto& networkProp = prop[network];
+   if (!networkProp.Exists(protocolSettings))
+   {
+      return false;
+   }
+   auto val = static_cast<uint32_t>(networkProp[protocolSettings].GetInt32());
+   return val & flag ? true : false;
+}
+
+/**
+ * \brief Helper function to get from XDomainProperties if full-E2E mode is supported or not
+ *
+ * \param[in]  prop  XDomainProperties as received from remote peer or as prepared locally
+ * \param[in]  name  Name of the controller that the properties are belong to, to print in the log message
+ *
+ * \returns true if full-E2E property exists and is set in the prop argument, otherwise - false
+ */
+bool SupportsFullE2E(const XDomainProperties::Properties& prop, const std::string& name)
+{
+   auto ret = FlagImpl(prop, FULL_E2E_SUPPORT_BIT);
+
+   std::string infoStr = "Full E2E support is reported as ";
+   if (!ret)
+   {
+      infoStr += "un";
+   }
+   infoStr += "supported by XDomainProperties of the " + name + " controller";
+   TbtServiceLogger::LogDebug(infoStr.c_str());
+
+   return ret;
+}
+
+/**
+* \brief Helper function to get from XDomainProperties if match fragements ID or not
+*
+* \param[in]  prop  XDomainProperties as received from remote peer or as prepared locally
+* \param[in]  name  Name of the controller that the properties are belong to, to print in the log message
+*
+* \returns true if match fragements ID property exists and is set in the prop argument, otherwise - false
+*/
+bool MatchFragmentsID(const XDomainProperties::Properties& prop, const std::string& name)
+{
+   auto ret = FlagImpl(prop, MATCH_FRAGS_ID_BIT);
+
+   std::string infoStr = "Match fragments ID is reported as ";
+   if (!ret)
+   {
+      infoStr += "un";
+   }
+   infoStr += "supported by XDomainProperties of the " + name + " controller";
+   TbtServiceLogger::LogDebug(infoStr.c_str());
+
+   return ret;
+}
+
+} // anon. namespace
+
 /**	convert the P2P state for string. Helper function for logs
  */
 std::string P2P_STATE_STRING(P2P_STATE e)
@@ -50,31 +128,34 @@ std::string P2P_STATE_STRING(P2P_STATE e)
  */
 bool CheckSupported(const XDomainProperties::Properties& remoteProp)
 {
-	return (remoteProp.IsExiest("network") &&
-		remoteProp["network"].IsExiest("prtcid") && remoteProp["network"]["prtcid"].GetInt32() == 1 &&
-		remoteProp["network"].IsExiest("prtcvers") && remoteProp["network"]["prtcvers"].GetInt32() == 1
-		&& remoteProp["network"].IsExiest("prtcrevs") && remoteProp["network"]["prtcrevs"].GetInt32() == 1);
+	return (remoteProp.Exists("network") &&
+		remoteProp["network"].Exists("prtcid") && remoteProp["network"]["prtcid"].GetInt32() == 1 &&
+		remoteProp["network"].Exists("prtcvers") && remoteProp["network"]["prtcvers"].GetInt32() == 1
+		&& remoteProp["network"].Exists("prtcrevs") && remoteProp["network"]["prtcrevs"].GetInt32() == 1);
 }
 
 P2PDevice::P2PDevice(const controlleriD& id,
-	const UniqueID& remoteRouterUniqueID,
-	const ROUTE_STRING& localRouteString,
-	const UniqueID& localHostRouterUniqueID,
-	const std::string& localHostName,
-	uint8_t depth,
-	bool PathEstablished) :
-	m_ControllerID(id),
-	m_LocalRouteString(localRouteString),
-	m_LocalHostRouterUniqueID(localHostRouterUniqueID),
-	m_RemoteRouterUniqueID(remoteRouterUniqueID),
-	m_State(P2P_STATE::NOT_READY),
-	m_Depth(depth),
-	m_PathEstablished(PathEstablished)
+                     const UniqueID& remoteRouterUniqueID,
+                     const ROUTE_STRING& localRouteString,
+                     const UniqueID& localHostRouterUniqueID,
+                     const std::string& localHostName,
+                     uint8_t depth,
+                     bool PathEstablished,
+                     bool supportsFullE2E)
+   : m_ControllerID(id),
+     m_Depth(depth),
+     m_LocalRouteString(localRouteString),
+     m_LocalHostRouterUniqueID(localHostRouterUniqueID),
+     m_RemoteRouterUniqueID(remoteRouterUniqueID),
+     m_State(P2P_STATE::NOT_READY),
+     m_PathEstablished(PathEstablished)
 {
-	m_PropertiesChangeActive = false;
-	m_CancelRequests = false;
-	m_ResetPropertiesRequest = true;
-	SetLocalHostName(localHostName);
+   m_PropertiesChangeActive = false;
+   m_CancelRequests = false;
+   m_ResetPropertiesRequest = true;
+   SetLocalHostName(localHostName);
+   SetFlag(supportsFullE2E, FULL_E2E_SUPPORT_BIT);
+   SetFlag(true, MATCH_FRAGS_ID_BIT);
 }
 
 /**	the async properties request thread can get various errors from the other peer
@@ -189,7 +270,7 @@ void P2PDevice::HandleInterDomainResponse(const std::vector<uint8_t>& Msg)
 					StartHandshake();
 				}
 				else if (State() == P2P_STATE::READING_PROPERTIES) {
-					//in case that the sevice is in reading mode, we pass the request to the reading thread
+					//in case that the service is in reading mode, we pass the request to the reading thread
 					//using the promise/future mechanism
 					m_properties_response.set_value(Msg);
 				}
@@ -234,9 +315,9 @@ void P2PDevice::HandleInterDomainResponse(const std::vector<uint8_t>& Msg)
 	}
 }
 
-/**	this function is to prepare the properties read request fot this p2p device
+/**	this function is to prepare the properties read request for this p2p device
  *	Offset - XDomain properties can be bigger then the maximum payload size,
- *					 and will be sent in chunks, this is the requsted offset in DW's
+ *					 and will be sent in chunks, this is the requested offset in DW's
  *					 of the properties.
  */
 XDOMAIN_PROPERTIES_READ_REQUEST P2PDevice::PrepareReadPropertiesRequest(uint32_t Offset)
@@ -271,7 +352,7 @@ void P2PDevice::SendPropertiesChangeResponse(const XDOMAIN_PROPERTIES_CHANGED_NO
 }
 
 /**	sending properties response with the requested offset
- *	Offset - requested offset in DW's of the poperites
+ *	Offset - requested offset in DW's of the properties
  *	sn - the request sequence number, need to be replied with same sn
  *	Note: response should be replied with same sequence number
  */
@@ -364,6 +445,12 @@ void P2PDevice::StartHandshake()
 				}
 				else
 				{
+               auto remote = SupportsFullE2E(remote_properties, "remote");
+               auto local = SupportsFullE2E(m_LocalHostProperties, "local");
+               m_enableFullE2E = remote && local;
+               remote = MatchFragmentsID(remote_properties, "remote");
+               local = MatchFragmentsID(m_LocalHostProperties, "local");
+               m_MatchFragmentsID = remote && local;
 					//set the state to pending, until we will get approval that the p2p adapter is up
 					SetState(P2P_STATE::PENDING_TUNNEL);
 					ConnectionManager::GetInstance()->GetControllerCommandSender().SendTbtWmiApproveP2P(*this);
@@ -394,7 +481,7 @@ void P2PDevice::SendPropertiesChangeRequest()
 		try
 		{
 			//preparing the notification request
-			XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION msg = { 0 };
+            auto msg = emptyInit<XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION>();
 			XDomainHeaderIntialization<XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION, XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION_TYPE>(msg);
 			LocalHostRouterUniqueID().ToBuffer(msg.SourceUUID);
 
@@ -436,7 +523,7 @@ void P2PDevice::SendPropertiesChangeRequest()
 void P2PDevice::OnSystemPreShutdown()
 {
 	TbtServiceLogger::LogInfo("P2P: OnSystemPreShutdown");
-	XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION msg = { 0 };
+    auto msg = emptyInit<XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION>();
 	XDomainHeaderIntialization<XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION, XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION_TYPE>(msg);
 	LocalHostRouterUniqueID().ToBuffer(msg.SourceUUID);
 
@@ -556,4 +643,28 @@ std::shared_ptr<XDomainProperties::Properties> P2PDevice::GetRemoteHostPropertie
 		TbtServiceLogger::LogError("Error: P2P: fail retrieving remote host properties.");
 		throw;
 	}
+}
+
+void P2PDevice::SetFlag(bool enable, uint32_t flag)
+{
+   auto value = static_cast<uint32_t>(m_LocalHostProperties[network][protocolSettings].GetInt32());
+   if (enable)
+   {
+      value |= flag;
+   }
+   else
+   {
+      value &= ~flag;
+   }
+   m_LocalHostProperties[network][protocolSettings] = value;
+}
+
+bool P2PDevice::GetEnableFullE2E() const
+{
+   return m_enableFullE2E;
+}
+
+bool P2PDevice::GetMatchFragmentsID() const
+{
+   return m_MatchFragmentsID;
 }

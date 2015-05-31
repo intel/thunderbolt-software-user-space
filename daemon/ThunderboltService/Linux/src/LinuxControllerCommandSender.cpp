@@ -105,6 +105,7 @@ void LinuxControllerCommandSender::OnEvent(uint32_t controller_id,PDF_VALUE pdf,
 			ConnectionManager::GetInstance()->GetController(cId)->GetControllerData()->SetNumOfPorts(GetNomOfPortsFromControllerID(cId));
 			ConnectionManager::GetInstance()->GetController(cId)->SetDmaPort(driver_information.dma_port);
 			ConnectionManager::GetInstance()->GetController(cId)->SetNvmVersionOffset(driver_information.nvm_offset);
+         ConnectionManager::GetInstance()->GetController(cId)->SetSupportsFullE2E(driver_information.supportsFullE2E);
 			TbtServiceLogger::LogInfo("Driver version: %s, FW version: %s, Security level: %d, Generation: Thunderbolt %d, NumOfPorts:%d",
 							StringToWString(driver_information.driver_version).c_str(),
 							ConnectionManager::GetInstance()->GetController(cId)->GetControllerData()->GetFWVersion().c_str(),
@@ -125,16 +126,6 @@ void LinuxControllerCommandSender::OnEvent(uint32_t controller_id,PDF_VALUE pdf,
 			TbtServiceLogger::LogError("Error: LinuxControllerCommandSender::OnEvent failed, PDF: %d, (Exception: %s)",pdf,e.what());
 		}
 		TbtServiceLogger::LogDebug("LinuxControllerCommandSender::OnEvent exit, PDF: %d",pdf);
-}
-
-/**
- * sending request for driver details
- */
-void LinuxControllerCommandSender::GetDriverInformation(const controlleriD& Cid,
-		std::wstring& oVersionString, std::wstring& oInstanceName,
-		uint8_t& oDmaPort, uint32_t& nvmOffset)  {
-		GenlWrapper::Instance().send_message_sync(ControllerIDToToInt(Cid),NHI_CMD_QUERY_INFORMATION);
-
 }
 
 /**
@@ -168,7 +159,14 @@ void LinuxControllerCommandSender::SendTbtWmiMessageToFW(
 void LinuxControllerCommandSender::SendTbtWmiApproveP2P(
 		const IP2PDevice& Device) const {
 	TbtServiceLogger::LogInfo("Send approve P2P command for %s",Device.RemoteHostName().c_str());
-	auto msg = std::make_shared<TbtWmiApproveP2P>(Device.LocalRouteString(),Device.LocalHostRouterUniqueID(), Device.RemoteRouterUniqueID(), 0xFFFFF ,Device.Depth());
-	GenlWrapper::Instance().send_message_sync(ControllerIDToToInt(Device.ControllerID()),NHI_CMD_APPROVE_TBT_NETWORKING,msg);
+   auto msg = std::make_shared<TbtWmiApproveP2P>(Device.LocalRouteString(),
+                                                 Device.LocalHostRouterUniqueID(),
+                                                 Device.RemoteRouterUniqueID(),
+                                                 0xFFFFF,
+                                                 Device.Depth(),
+                                                 Device.GetEnableFullE2E(),
+                                                 Device.GetMatchFragmentsID());
 
+	GenlWrapper::Instance().send_message_sync(ControllerIDToToInt(Device.ControllerID()),NHI_CMD_APPROVE_TBT_NETWORKING,msg);
+   TbtServiceLogger::LogDebug("Approve P2P message has been sent to the driver");
 }

@@ -71,7 +71,7 @@ namespace XDomainProperties
       return size + DwSizeOf<KeyValueEntry>()*GetNumOfEntries();
    }
 
-   bool DirectoryData::IsExiest(const std::string& key) const
+   bool DirectoryData::Exists(const std::string& key) const
    {
       return m_Properties.find(key) != m_Properties.end();
    }
@@ -106,9 +106,9 @@ namespace XDomainProperties
       return m_Data.GetNumOfEntries();
    }
 
-   bool ChildDirectory::IsExiest(const std::string& key) const
+   bool ChildDirectory::Exists(const std::string& key) const
    {
-      return m_Data.IsExiest(key);
+      return m_Data.Exists(key);
    }
 
    bool operator==(const ChildDirectory& lhs, const ChildDirectory& rhs)
@@ -306,10 +306,10 @@ namespace XDomainProperties
       }
    }
 
-   bool Property::IsExiest(const std::string& key) const
+   bool Property::Exists(const std::string& key) const
    {
       try{
-         return boost::get<ChildDirectory>(m_Values.at(PropertyType::DIRECTORY)).IsExiest(key);
+         return boost::get<ChildDirectory>(m_Values.at(PropertyType::DIRECTORY)).Exists(key);
       }
 	  catch (const std::exception& e)
       {
@@ -365,7 +365,7 @@ namespace XDomainProperties
       return m_RooDirectory[key];
    }
 
-   //-----------------------Constractors-----------------------------
+   //-----------------------Constructors-----------------------------
 
    /**
     * constructor - create an empty properties structure
@@ -571,7 +571,7 @@ namespace XDomainProperties
       ChildDirectory dir(uuid);
       KeyValueEntry childEntry;
 
-      //not taking in acount 4 DWORDS of directory UUID
+      //not taking in account 4 DWORDS of directory UUID
       uint32_t numEntries = (propertyEntry.Size - DwSizeOf<DirectoryUUID>()) / DwSizeOf<KeyValueEntry>();
 
       for (uint32_t i = 0; i < numEntries; i++)

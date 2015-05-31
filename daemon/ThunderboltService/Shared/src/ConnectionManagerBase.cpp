@@ -34,9 +34,9 @@
 #include "tbtException.h"
 
 ConnectionManagerBase::ConnectionManagerBase(std::shared_ptr<IControllerCommandSender>& sender) :
-   m_ControllersSettings(new ControllerSettings(false,false,false)), //TODO: put default in the settings?
    m_ControllerCommandSender(sender),
-   m_isPreShutdownMode(false)
+   m_isPreShutdownMode(false),
+   m_ControllersSettings(new ControllerSettings(false,false,false)) //TODO: put default in the settings?
 {
 }
 
@@ -92,8 +92,6 @@ void ConnectionManagerBase::OnInterDomainDisconnected( const controlleriD& Contr
 	const auto pPort = pController->GetPortAt(PortNum);
 
    pPort->removeP2PDevice();
-
-	auto PortsBitmap = TURN_ON_BIT(PortNum);
 }
 
 /**
@@ -240,6 +238,8 @@ void ConnectionManagerBase::SetControllersSettings(const std::shared_ptr<Control
 	m_ControllersSettings = Settings;
 }
 
+#include "GenlWrapper.h"
+
 /**
  * this function is getting the information from the driver
  */
@@ -250,24 +250,7 @@ void ConnectionManagerBase::QueryDriverInformation(const controlleriD& Cid)
 
 	try
 	{
-		wstring versionString = L"";
-		wstring instanceName = L"";
-		uint8_t dmaPort = -1 ;
-		uint32_t nvmOffset= -1;
-
-		GetControllerCommandSender().GetDriverInformation(Cid, versionString, instanceName, dmaPort, nvmOffset);
-		m_Controllers.at(Cid)->GetControllerData()->SetDriverVersion(versionString);
-		m_Controllers.at(Cid)->GetControllerData()->SetGeneration(GetGenerationFromControllerID(Cid));
-		m_Controllers.at(Cid)->GetControllerData()->SetNumOfPorts(GetNomOfPortsFromControllerID(Cid));
-		m_Controllers.at(Cid)->SetDmaPort(dmaPort);
-		m_Controllers.at(Cid)->SetNvmVersionOffset(nvmOffset);
-		TbtServiceLogger::LogInfo("Driver version: %s, FW version: %s, Security level: %d, Generation: Thunderbolt %d, NumOfPorts:%d",
-				WStringToString(versionString).c_str(),
-				WStringToString(m_Controllers.at(Cid)->GetControllerData()->GetFWVersion()).c_str(),
-				m_Controllers.at(Cid)->GetControllerData()->GetSecurityLevel(),
-				GetGenerationFromControllerID(Cid),
-				GetNomOfPortsFromControllerID(Cid));
-
+      GenlWrapper::Instance().send_message_sync(ControllerIDToToInt(Cid),NHI_CMD_QUERY_INFORMATION);
 	}
 	catch (const std::exception& e)
 	{

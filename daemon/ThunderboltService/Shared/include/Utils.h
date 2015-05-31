@@ -174,6 +174,18 @@ uint32_t GetNomOfPortsFromControllerID(const controlleriD& ID);
 
 uint32_t ControllerIDToToInt(const controlleriD& ID);
 
-uint32_t IsAuthenticationSupported();
+int32_t IsAuthenticationSupported();
+
+/**
+ * \brief Utility for silencing GCC when we really meant for empty init-list for POD
+ */
+template<typename T>
+T emptyInit()
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+return {};
+#pragma GCC diagnostic pop
+}
 
 #endif

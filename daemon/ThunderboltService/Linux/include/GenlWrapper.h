@@ -61,9 +61,9 @@ public:
 	void register_events_callback(events_callback func);
 private:
 	//netlink callbacks
-	static int cb_error_handler(struct sockaddr_nl *nla, struct nlmsgerr *nlerr, void *arg);
-	static int cb_ack(struct nl_msg * msg, void * arg);
-	static int cb_valid(struct nl_msg * msg, void * arg);
+        static int cb_error_handler(sockaddr_nl*, nlmsgerr* nlerr, void*);
+        static int cb_ack(nl_msg*, void*);
+        static int cb_valid(nl_msg* msg, void*);
 
 	//methods
 	GenlWrapper();		//registration for the netlink family, subscribe driver

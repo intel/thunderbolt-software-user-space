@@ -33,11 +33,11 @@
 //Netlink user defined header, currently include one DW that represent the controller ID
 #define NHI_GENL_USER_HEADER_SIZE 4
 
-typedef enum NHI_GENL_EVENT_SOURCE
+typedef enum
 {
 	NHI_GENL_EVENT_SOURCE_FW,
 	NHI_GENL_EVENT_SOURCE_DRIVER
-};
+} NHI_GENL_EVENT_SOURCE;
 
 //Define attributes types according to netlink protocol
 typedef enum {
@@ -46,6 +46,7 @@ typedef enum {
 	NHI_ATTR_NVM_VER_OFFSET,
 	NHI_ATTR_NUM_PORTS,
 	NHI_ATTR_DMA_PORT,
+	NHI_ATTR_SUPPORT_FULL_E2E,
 	NHI_ATTR_MAILBOX_CMD,
 	NHI_ATTR_PDF,
 	NHI_ATTR_MSG_TO_ICM,
@@ -54,6 +55,8 @@ typedef enum {
 	NHI_ATTR_LOCAL_UNIQUE_ID,
 	NHI_ATTR_REMOTE_UNIQUE_ID,
 	NHI_ATTR_LOCAL_DEPTH,
+	NHI_ATTR_ENABLE_FULL_E2E,
+	NHI_ATTR_MATCH_FRAME_ID,
 	__NHI_ATTR_MAX,
 } NHI_GENL_ATTR;
 

@@ -56,10 +56,26 @@ public:
 	virtual bool HasPort(uint32_t PortNum) const;
 	virtual int GetDmaPort() const;
 	virtual void SetDmaPort(int port);
+
+   /**
+    * \brief Returns if the controller supports full-E2E mode for better P2P performance
+    *
+    * \returns true if full-E2E mode is supported, otherwise - false
+    */
+   bool GetSupportsFullE2E() override;
+
+   /**
+    * \brief Sets if the controller supports full-E2E mode for better P2P performance
+    *
+    * \param[in]  fullE2ESupport    true if full-E2E mode is supported
+    */
+   void SetSupportsFullE2E(bool fullE2ESupport) override;
+
 	virtual void Clear();
 	virtual void AddP2PDevice(uint32_t Port, std::shared_ptr<IP2PDevice> pDeviceToAdd);
    virtual void SetIsUp(bool isUp);
    virtual bool IsUp() const { return m_IsUp; }
+
 private:
 	controlleriD m_Id; 									//the controller identifier
 	shared_ptr<ControllerDetails> m_ControllerDetails;	//controller details
@@ -67,6 +83,7 @@ private:
 	int m_DmaPort;										//the controller DMA port number
 	uint32_t m_NvmOffset;								//offset of the controller NVM
 	bool m_IsUp;										//the power mode of the controller
+   bool m_SupportsFullE2E = false;
 };
 
 #endif // !_CONTROLLER_
