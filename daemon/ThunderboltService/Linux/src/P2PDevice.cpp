@@ -545,7 +545,7 @@ std::shared_ptr<XDomainProperties::Properties> P2PDevice::GetRemoteHostPropertie
 		std::vector<uint8_t> properties_buffer;		//accumulated buffer for the properties
 		//properties object has a generation (version), each message contain the properties
 		//generation, in case that the generation changed the chunk can not be synced and needs to request again
-		uint32_t buffer_generation;
+        uint32_t buffer_generation = 0;
 
 		for (int i = 0; i < XDOMAIN_MAX_RETRIES; i++) {
 			//this is reset callback, define in lambda to avoid code duplication

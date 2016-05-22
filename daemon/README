@@ -1,6 +1,6 @@
 Intel Thunderbolt(TM) Daemon
 ****************************
-Copyright(c) 2014 - 2015 Intel Corporation.
+Copyright(c) 2014 - 2016 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,
@@ -43,37 +43,40 @@ security level is currently deployed on them.
 
 Supported OS
 ============
-- Red Hat* Enterprise Linux 7.0
+- Red Hat* Enterprise Linux 7.2
+- Ubuntu* 15.10
+- SUSE* Linux Enterprise Desktop 12 SP1
 
 Kernel/Daemon Compatibility
 ===========================
 The daemon operates in coordination with the Thunderbolt kernel driver to provide
 the Thunderbolt functionalities.
-When upgrading to a newer version of the daemon, ensure that a 
-compatible version of the kernel is used.
-By default, same build versions are compatible unless specified. 
+When upgrading to a newer version of the daemon, ensure that a compatible version
+of the kernel is used.
+By default, same build versions are compatible unless specified.
 
 Known Issues
 ============
-- 4926652: Daemon is not working after initial install
-* There's a need to restart the system post-installtion to make the daemon work.
-properly
 - 4926679: Thunberbolt networking is not set properly
-* For systems deploying a "bridge configuration" on Red Hat* Enterprise Linux 7.0 
+* For systems deploying a "bridge configuration" on Red Hat* Enterprise Linux 7.0
 Thunderbolt networking  may not function properly.
 * In rare situations, Thunberbolt networking may not established (no Thunderbolt
 device eth appears) after a handshake is completed by the two peers;
 a further re-plug of the cable will re-establish and create
-the eth device.  
-- 4926640: Daemon version logging is inaccurate
-* Prints of the version from the daemon logger are not printing right versions. 
-- 4926767: make install can be run from outside Thunderbolt/Linux folder
-* Enter the folder on the build machine and run the make install command from this 
-location.
+the eth device.
 
-Future Releases
+Resolved Issues
 ===============
-The daemon will support acknowledge of devices with security levels above legacy.
+- 4926652: Daemon is not working after initial install
+* There's a need to restart the system post-installtion to make the daemon work.
+properly
+
+- 4926640: Daemon version logging is inaccurate
+* Prints of the version from the daemon logger are not printing right versions.
+
+- 4926767: make install can be run from outside Thunderbolt/Linux folder
+* Enter the folder on the build machine and run the make install command from
+this location.
 
 Information 
 ===========

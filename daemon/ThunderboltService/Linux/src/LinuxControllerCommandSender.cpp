@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -106,13 +106,6 @@ void LinuxControllerCommandSender::OnEvent(uint32_t controller_id,PDF_VALUE pdf,
 			ConnectionManager::GetInstance()->GetController(cId)->SetDmaPort(driver_information.dma_port);
 			ConnectionManager::GetInstance()->GetController(cId)->SetNvmVersionOffset(driver_information.nvm_offset);
          ConnectionManager::GetInstance()->GetController(cId)->SetSupportsFullE2E(driver_information.supportsFullE2E);
-			TbtServiceLogger::LogInfo("Driver version: %s, FW version: %s, Security level: %d, Generation: Thunderbolt %d, NumOfPorts:%d",
-							StringToWString(driver_information.driver_version).c_str(),
-							ConnectionManager::GetInstance()->GetController(cId)->GetControllerData()->GetFWVersion().c_str(),
-							ConnectionManager::GetInstance()->GetController(cId)->GetControllerData()->GetSecurityLevel(),
-							GetGenerationFromControllerID(cId),
-							GetNomOfPortsFromControllerID(cId));
-
 				break;
 		}
 			default:

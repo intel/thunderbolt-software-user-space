@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -113,7 +113,13 @@ void ConnectionManagerBase::OnDriverReadyResponse( const controlleriD& cId,const
 	// Get the current settings from the controller
 	std::shared_ptr<ControllerSettings> ContSett(new ControllerSettings(!e.AllowAnyThunderboltDevice, e.Allow1stDepthDevicesToConnectAtAnyDepth, e.AllowDockDevicesToConnectAtAnyDepth));
 
-	TbtServiceLogger::LogInfo("Controller settings: Certified only: %s, Override first depth: %s, Allow dock at any depth: %s",	BoolToString(ContSett->GetCertifiedOnly()).c_str(),
+   auto details = m_Controllers.at(cId)->GetControllerData();
+   TbtServiceLogger::LogInfo("Controller device ID: %X, TBT generation: %d, port count: %d, security level: %d",
+                             GetDeviceIDFromControllerID(cId),
+                             details->GetGeneration(),
+                             details->GetNumOfPorts(),
+                             details->GetSecurityLevel());
+	TbtServiceLogger::LogInfo("Controller settings: Certified only: %s, Override first depth: %s, Allow dock at any depth: %s", BoolToString(ContSett->GetCertifiedOnly()).c_str(),
 																											BoolToString(ContSett->GetOverrideFirstDepth()).c_str(),
 																											BoolToString(ContSett->GetAllowDockAtAnyDepth()).c_str());
 

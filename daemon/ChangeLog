@@ -1,6 +1,16 @@
+ver 16.1.47
+	- Removed libnl1 dependency
+	- Enabled installation on more linux distors (Ubuntu and SUSE)
+	- Fixed daemon registration error on Ubuntu and SUSE
+	- Correctly check for family resolving error
+	- Improves and cleaning up for CMakeList.txt and CMake modules for better configuration error handling and better documentation
+	- Improved startup log print (printing KO version and daemon version) and controller up (driver ready) log print (printing more controller details)
+	- Fixed compilation warnings
+
 ver 15.2.32
 	- Added support for L6000 controllers
 	- Added support for XDOMAIN protocol V2
 	- Improvements during traffic and at connection & disconnection
+
 ver 15.2.28 (initial version):
-	Added support for Thunderbolt(TM) Networking
+	- Added support for Thunderbolt(TM) Networking

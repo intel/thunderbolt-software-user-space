@@ -7,7 +7,7 @@ execute_process(COMMAND udevadm control --reload-rules
 if(Result EQUAL 0)
     message(STATUS "udev rule updated")
 else()
-    message(FATAL_ERROR "udev rule update failed\n Result - ${Result}\nOutput - ${Output}\nError - ${Error}")
+    message(FATAL_ERROR "udev rule update failed\nResult - ${Result}\nOutput - ${Output}\nError - ${Error}")
 endif()
 
 #enable thunderbolt service
@@ -19,7 +19,7 @@ execute_process(COMMAND systemctl enable thunderbolt
 if(Result EQUAL 0)
     message(STATUS "enabling thunderbolt service done")
 else()
-    message(FATAL_ERROR "enabling thunderbolt service failed\n Result - ${Result}\nOutput - ${Output}\nError - ${Error}")
+    message(FATAL_ERROR "enabling thunderbolt service failed\nResult - ${Result}\nOutput - ${Output}\nError - ${Error}")
 endif()
 
 #reload systemd
@@ -31,7 +31,7 @@ execute_process(COMMAND systemctl daemon-reload
 if(Result EQUAL 0)
     message(STATUS "reload systemd done")
 else()
-    message(FATAL_ERROR "reload systemd failed\n Result - ${Result}\nOutput - ${Output}\nError - ${Error}")
+    message(FATAL_ERROR "reload systemd failed\nResult - ${Result}\nOutput - ${Output}\nError - ${Error}")
 endif()
 
 #start thunderbolt daemon
@@ -43,14 +43,14 @@ execute_process(COMMAND systemctl restart thunderbolt
 if(Result EQUAL 0)
     message(STATUS "start thunderbolt daemon")
 else()
-    message(STATUS "start thunderbolt daemon failed\n Result - ${Result}\nOutput - ${Output}\nError - ${Error}")
+    message(WARNING "start thunderbolt daemon failed\nResult - ${Result}\nOutput - ${Output}\nError - ${Error}")
 endif()
 
 message("
 /*******************************************************************************
  *
  * Intel Thunderbolt daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,

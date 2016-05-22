@@ -1,0 +1,7 @@
+[ -d thunderbolt_package ] && rm -r thunderbolt_package
+mkdir thunderbolt_package
+# do we need thunderbolt-glue.xml?
+cp bin/thunderboltd config/* README thunderbolt_package/
+cd thunderbolt_package/
+chmod +x install.sh
+tar czf ../thunderbolt_package.tar.gz *

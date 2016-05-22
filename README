@@ -6,7 +6,7 @@ development and intended to facilitate
 integration in the future for customers deploying 
 Thunderbolt on Linux.
 
-However, at this stage, the kernel code hasn't be accepted
+However, at this stage, the kernel code hasn't been accepted
 upstream, and therefore might still significantly change. 
 Daemon and other components code might significantly change as well. 
 

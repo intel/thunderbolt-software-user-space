@@ -1,0 +1,1 @@
+cmake -G "Eclipse CDT4 - Unix Makefiles" -DCMAKE_CXX_COMPILER_ARG1=-std=c++11 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_ECLIPSE_EXECUTABLE=/home/ccduser/tools/eclispe/eclipse/eclipse -DCMAKE_CXX_COMPILER=/usr/bin/gcc

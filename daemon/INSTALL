@@ -1,7 +1,7 @@
 Installation Instructions:
 **************************
 Intel Thunderbolt(TM) daemon
-Copyright(c) 2014 - 2015 Intel Corporation.
+Copyright(c) 2014 - 2016 Intel Corporation.
  
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,
@@ -21,23 +21,24 @@ Contact Information:
 Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
 Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
-Pre-requisites:
-=================
+Prerequisites
+=============
 To compile the Thunderbolt Daemon you will need these packages and libraries installed:
-1. Kernel with supported Thunderbolt module ( kernel >= 3.17 )
-2. GCC compiler (with c++11 support, tested with GCC 4.8.2)
+1. Kernel with supported Thunderbolt module (kernel >= 3.19)
+2. g++ compiler (with c++11 support, tested with g++ 4.8.2)
 3. CMake >= 2.8.8 (http://www.cmake.org/)
-4. libnl 1 & libnl 3 (http://www.infradead.org/~tgr/libnl/, tested with libnl1-1.1.4-3 and libnl3-3.2.21-6)) 
-5. libdbus-c++ >= 0.9.0 (http://dbus-cplusplus.sourceforge.net/)
+4. libnl 3 (http://www.infradead.org/~tgr/libnl/ or development
+   packages from the distribution repositories, tested with libnl3-3.2.21-6))
+5. libdbus-c++ >= 0.5.0 (http://dbus-cplusplus.sourceforge.net/ or development packages from the distribution repositories)
 
-Basic Installation:
-===================
+Basic Installation
+==================
 The CMake command tries to find necessary libraries and system paths.
 Upon success, it will create Makefile which then can be compiled and installed using the make command.
 
 The simplest way to compile and install the Thunderbolt Daemon is:
-1. cd to 'ThunderboltService/Linux'
-2. Run 'cmake .'
-3. Run 'make'
-4. Run 'sudo make install'
-5. Reboot your machine (See known issues in README)
+1. cd to 'ThunderboltService'
+2. Create a directory named e.g. 'build'
+3. Run 'cmake ../Linux'
+4. Run 'make'
+5. Run 'sudo make install'

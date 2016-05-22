@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -25,8 +25,4 @@
  ******************************************************************************/
 
 #pragma once
-#define thunderbolt_VERSION_MAJOR "@thunderbolt_VERSION_MAJOR@"
-#define thunderbolt_VERSION_MINOR "@thunderbolt_VERSION_MINOR@"
-#define THUNDERBOLT_SERVER_PATH "/com/Intel/Thunderbolt1"
-#define THUNDERBOLT_SERVER_NAME "com.Intel.Thunderbolt1"
-#define  PROGRAM_NAME "thunderbolt"
+#define THUNDERBOLT_VERSION "16.1.47.13-source"

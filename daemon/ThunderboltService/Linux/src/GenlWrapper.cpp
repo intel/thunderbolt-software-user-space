@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -187,17 +187,12 @@ GenlWrapper::GenlWrapper(): m_family_id(0),
 		//the ID is a reference for the remote netlink server
 		m_family_id  = genl_ctrl_resolve(m_genl_socket, NHI_GENL_NAME);
 
-        if(m_family_id == 0) {
+        if(m_family_id < 0) {
 			throw TbtException("can't extract family id, is driver installed and loaded?");
 		}
 
 		//registering callbacks
 		register_netlink_callbacks();
-
-		//subscribe netlink notifications group
-		int ret = nl_socket_add_membership(m_genl_socket,RTNLGRP_LINK);
-		if(ret < 0)
-			throw TbtException((std::string("nl_socket_add_membership failed, netlink error: ") + nl_geterror(ret)).c_str());
 
 		//start messages receiver thread
 		std::thread([this](){receive_thread();}).detach();
