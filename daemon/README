@@ -22,10 +22,11 @@ Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
 Overview 
 ========
-Thunderbolt technology is a transformational high-speed, dual protocol I/O that 
-provides unmatched performance with up to 20Gbps bi-directional transfer speeds. 
-It provides flexibility and simplicity by supporting both data (PCIe) and video 
-(DisplayPort) on a single cable connection that can daisy-chain up to six devices.
+Thunderbolt™ technology is a transformational high-speed, dual protocol 
+I/O that provides unmatched performance with up to 40Gbps bi-directional 
+transfer speeds. It provides flexibility and simplicity by supporting both 
+data (PCIe, USB3.1) and video (DisplayPort) on a single cable connection 
+that can daisy-chain up to six devices.
 
 In addition, the Thunderbolt Networking mode allows a connection of two computers 
 through a Thunderbolt cable. 
@@ -80,6 +81,9 @@ this location.
 
 Information 
 ===========
+Kernel code: 
+	https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+
 Mailing list:
 	thunderbolt-software@lists.01.org
 	Register at: https://lists.01.org/mailman/listinfo/thunderbolt-software

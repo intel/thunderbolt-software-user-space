@@ -1,14 +1,20 @@
+ver 16.1.50
+	- Added support for JHL6000 controllers
+	- Added support for separation between upstream kernel module developed for Apple platforms 
+	  and kernel module for Thunderbolt(TM) networking for non-Apple platforms (called thunderbolt_icm)
 ver 16.1.47
 	- Removed libnl1 dependency
 	- Enabled installation on more linux distors (Ubuntu and SUSE)
 	- Fixed daemon registration error on Ubuntu and SUSE
 	- Correctly check for family resolving error
-	- Improves and cleaning up for CMakeList.txt and CMake modules for better configuration error handling and better documentation
-	- Improved startup log print (printing KO version and daemon version) and controller up (driver ready) log print (printing more controller details)
+	- Improves and cleaning up for CMakeList.txt and CMake modules for better 
+	  configuration error handling and better documentation
+	- Improved startup log print (printing KO version and daemon version) 
+	   and controller up (driver ready) log print (printing more controller details)
 	- Fixed compilation warnings
 
 ver 15.2.32
-	- Added support for L6000 controllers
+	- Added support for DSL6000 controllers
 	- Added support for XDOMAIN protocol V2
 	- Improvements during traffic and at connection & disconnection
 

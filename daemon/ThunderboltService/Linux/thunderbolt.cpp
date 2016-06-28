@@ -55,7 +55,7 @@ void daemon_exit(int)
 
 std::string moduleVersion() try
 {
-    std::ifstream moduleVersionPath("/sys/module/thunderbolt/version");
+    std::ifstream moduleVersionPath("/sys/module/thunderbolt_icm/version");
     moduleVersionPath.exceptions(std::ios::badbit | std::ios::failbit);
     std::string res;
     std::getline(moduleVersionPath, res);

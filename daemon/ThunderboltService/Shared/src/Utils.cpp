@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -107,7 +107,6 @@ std::wstring RemoveoDoubleSlash(const std::wstring& input)
 	return Res;
 }
 
-
 uint32_t GetNomOfPortsFromControllerID(const controlleriD& ID)
 {
 	auto devID = GetDeviceIDFromControllerID(ID);
@@ -117,10 +116,13 @@ uint32_t GetNomOfPortsFromControllerID(const controlleriD& ID)
 	case 0x156a:
 	case 0x157d:
 	case 0x1575:
+    case 0x15bf:
+    case 0x15d9:
 		return 1;
 	case 0x1568:
 	case 0x156c:
 	case 0x1577:
+    case 0x15d2:
 		return 2;
 	default:
 		throw TbtException("Unknown device type");
@@ -141,7 +143,10 @@ ThunderboltGeneration GetGenerationFromControllerID(const controlleriD& ID)
 		return ThunderboltGeneration::THUNDERBOLT_2;
 	case 0x1575:
 	case 0x1577:
-		return ThunderboltGeneration::THUNDERBOLT_3;
+    case 0x15bf:
+    case 0x15d9:
+    case 0x15d2:
+        return ThunderboltGeneration::THUNDERBOLT_3;
 	default:
 		throw TbtException("Unknown device ID");
 	}

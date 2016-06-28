@@ -1,5 +1,14 @@
 Thunderbolt Linux releases
 ==========================
+28-June-2016:
+============
+	- Added support for JHL6000 controllers
+	- Added support for separation between upstream kernel module developed for Apple platforms 
+	  and kernel module for Thunderbolt(TM) networking for non-Apple platforms (called thunderbolt_icm) 
+	- Kernel code has been moved from this repository to https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+- Kernel build 16.1.50.1
+- Daemon build 16.1.50.4
+
 19-May-2016:
 ============
 

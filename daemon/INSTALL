@@ -24,7 +24,7 @@ Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 Prerequisites
 =============
 To compile the Thunderbolt Daemon you will need these packages and libraries installed:
-1. Kernel with supported Thunderbolt module (kernel >= 3.19)
+1. Kernel with supported Thunderbolt module (https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking) 
 2. g++ compiler (with c++11 support, tested with g++ 4.8.2)
 3. CMake >= 2.8.8 (http://www.cmake.org/)
 4. libnl 3 (http://www.infradead.org/~tgr/libnl/ or development
