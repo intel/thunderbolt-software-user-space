@@ -25,4 +25,4 @@
  ******************************************************************************/
 
 #pragma once
-#define THUNDERBOLT_VERSION "16.1.50.4-source"
+#define THUNDERBOLT_VERSION "16.1.51.6-source"

@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -55,7 +55,7 @@ public:
     * \param[in]   PeerOS
     * \param[in]   LocalDepth
     * \param[in]   EnableFullE2E      True to tell the driver to enable full-E2E mode for better
-    *                                 P2P performance
+    *                                 P2P performance (relevant if both controllers are >=AR)
     * \param[in]   MatchFragmentsID   True to tell the driver to match fragments with same ID
     *                                 to a specific packet
     *
@@ -83,22 +83,22 @@ public:
 
    void SetLocalRouteString(ROUTE_STRING LocalRouteString);
 
-   void SetLocalUniqueID(UniqueID LocalUniqueID);
-
-   void SetRemoteUniqueID(UniqueID RemoteUniqueID);
-
    void SetPeerOs(uint32_t PeerOS);
 
    void SetLocalDepth(uint8_t LocalDepth);
 
    /**
-    * \brief Tells the driver if we want to enable full-E2E mode
+    * \brief Tells the driver if we want to enable full-E2E mode (relevant if both controllers are >=AR)
     *
     * \param[in]  EnableFullE2E    True to tell the driver to enable full-E2E mode
     */
    void SetEnableFullE2E(bool EnableFullE2E);
 
 private:
+   void SetLocalUniqueID(UniqueID LocalUniqueID);
+
+   void SetRemoteUniqueID(UniqueID RemoteUniqueID);
+
    std::wstring m_InstanceName;
    std::vector<uint8_t> m_LocalRouteString;           // Size 2
    std::vector<uint8_t> m_LocalUniqueID;              // Size 4
@@ -106,7 +106,7 @@ private:
    uint8_t m_LocalDepth;
    uint32_t m_PeerOS;
 
-   /// True if we want to enable full-E2E mode
+   /// True if we want to enable full-E2E mode (relevant if both controllers are >=AR)
    bool m_EnableFullE2E = false;
 
    /// True if we want the P2P driver to match fragments with same ID to a specific packet

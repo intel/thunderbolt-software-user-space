@@ -1,11 +1,25 @@
 Thunderbolt Linux releases
 ==========================
+28-July-2016:
+============
+Daemon
+------
+	- Driver generic netlink API was changed – Approve P2P expects UUIDs to be in big endian
+Driver
+------
+	- Added Amir Levy as maintainer of thunderbolt/icm
+	- Replaced private uuid definitions with uuid_be
+
+- Kernel build 16.1.51.5
+- Daemon build 16.1.51.6
+
 28-June-2016:
 ============
 	- Added support for JHL6000 controllers
 	- Added support for separation between upstream kernel module developed for Apple platforms 
 	  and kernel module for Thunderbolt(TM) networking for non-Apple platforms (called thunderbolt_icm) 
 	- Kernel code has been moved from this repository to https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+	
 - Kernel build 16.1.50.1
 - Daemon build 16.1.50.4
 

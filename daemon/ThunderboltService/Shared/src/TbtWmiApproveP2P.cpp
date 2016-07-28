@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -28,6 +28,7 @@
 #include "MessagesWrapper.h"
 #include "UniqueID.h"
 #include "logger.h"
+#include "Utils.h"
 
 const std::wstring TbtWmiApproveP2P::InstanceName     = L"InstanceName";
 const std::wstring TbtWmiApproveP2P::LocalRouteString = L"LocalRouteString";
@@ -128,12 +129,16 @@ void TbtWmiApproveP2P::SetLocalUniqueID(UniqueID LocalUniqueID)
 {
    m_LocalUniqueID.clear();
    std::copy_n((PUCHAR)LocalUniqueID.data(), sizeof(UNIQUE_ID), std::back_inserter(m_LocalUniqueID));
+   // Driver expects big endian UUID
+   ArrayDwordSwap(m_LocalUniqueID.data(), m_LocalUniqueID.size());
 }
 
 void TbtWmiApproveP2P::SetRemoteUniqueID(UniqueID RemoteUniqueID)
 {
    m_RemoteUniqueID.clear();
    std::copy_n((PUCHAR)RemoteUniqueID.data(), sizeof(UNIQUE_ID), std::back_inserter(m_RemoteUniqueID));
+   // Driver expects big endian UUID
+   ArrayDwordSwap(m_RemoteUniqueID.data(), m_RemoteUniqueID.size());
 }
 
 void TbtWmiApproveP2P::SetLocalDepth(uint8_t LocalDepth)
