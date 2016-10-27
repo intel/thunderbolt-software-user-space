@@ -1,3 +1,7 @@
+ver 16.1.54
+	- Fix in udev rules to use the correct driver name 
+ver 16.1.52 
+	- udev rules updated following change in kernel module to "thunderbolt_icm"
 ver 16.1.50
 	- Added support for JHL6000 controllers
 	- Added support for separation between upstream kernel module developed for Apple platforms 

@@ -1,7 +1,14 @@
 Thunderbolt Linux releases
 ==========================
+27-October-2016:
+===============
+Daemon
+------
+	- Fix in udev rules to use the correct driver name 
+	- Daemon build 16.1.54.1	
+
 4-August-2016:
-============
+=============
 Daemon
 ------
 	- udev rules updated following change in kernel module to "thunderbolt_icm"

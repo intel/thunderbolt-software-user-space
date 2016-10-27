@@ -38,7 +38,7 @@ Upon success, it will create Makefile which then can be compiled and installed u
 
 The simplest way to compile and install the Thunderbolt Daemon is:
 1. cd to 'ThunderboltService'
-2. Create a directory named e.g. 'build'
+2. Create a directory named e.g. 'build' and change directory to it
 3. Run 'cmake ../Linux'
 4. Run 'make'
 5. Run 'sudo make install'
