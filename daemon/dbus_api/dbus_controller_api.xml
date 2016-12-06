@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<node name="/com/Intel/Thunderbolt1/controllers/?">
+ <interface name="com.Intel.Thunderbolt1.controller">
+   <method name="GetControllerID">
+     <arg type="u" name="rc" direction="out" />
+     <arg type="s" name="errstr" direction="out" />
+     <arg type="s" name="id" direction="out" />
+   </method>
+   <method name="IsInSafeMode">
+     <arg type="u" name="rc" direction="out" />
+     <arg type="s" name="errstr" direction="out" />
+     <arg type="b" name="safeMode" direction="out" />
+   </method>
+   <method name="UpdateFirmware">
+     <arg type="ay" name="buffer" direction="in" />
+     <arg type="u" name="rc" direction="out" />
+     <arg type="u" name="txnid" direction="out" />
+     <arg type="s" name="errstr" direction="out" />
+   </method>
+   <signal name="UpdateFirmwareResponse">
+     <arg type="u" name="rc"/>
+     <arg type="u" name="txnid"/>
+     <arg type="s" name="errstr"/>
+   </signal>
+   <method name="GetCurrentNVMVersion">
+     <arg type="u" name="rc" direction="out" />
+     <arg type="s" name="errstr" direction="out" />
+     <arg type="u" name="major" direction="out" />
+     <arg type="u" name="minor" direction="out" />
+   </method>
+   <method name="ReadFirmware">
+     <arg type="u" name="offset" direction="in" />
+     <arg type="u" name="size" direction="in" />
+     <arg type="u" name="rc" direction="out" />
+     <arg type="s" name="errstr" direction="out" />
+     <arg type="ay" name="data" direction="out" />
+   </method>
+ </interface>
+</node>
+

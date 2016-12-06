@@ -1,29 +1,32 @@
-/*******************************************************************************
+/********************************************************************************
+ * Thunderbolt(TM) daemon
+ * This daemon is distributed under the following BSD-style license:
  *
- * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ *     * Redistributions of source code must retain the above copyright notice,
+ *       this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Intel Corporation nor the names of its contributors
+ *       may be used to endorse or promote products derived from this software
+ *       without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
- * Contact Information:
- * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
-
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
 
 #ifndef _IP2P_DEVICE_H_
 #define _IP2P_DEVICE_H_
@@ -31,12 +34,13 @@
 #include "MessagesWrapper.h"
 #include "UniqueID.h"
 
-enum class P2P_STATE{
-	NOT_READY,					//the device is not ready, on start and time_out
-	READING_PROPERTIES,	//the device is currently reading or handling remote host properties
-	TUNNEL,						  //the device is tunneled, Ethernet adapter is up
-	NOT_SUPPORTED,			//the device is not support Thunderbolt IP
-	PENDING_TUNNEL			//the device support Thunderbolt IP and wait for driver to bring the Ethernet adapter up
+enum class P2P_STATE
+{
+   NOT_READY,          // the device is not ready, on start and time_out
+   READING_PROPERTIES, // the device is currently reading or handling remote host properties
+   TUNNEL,             // the device is tunneled, Ethernet adapter is up
+   NOT_SUPPORTED,      // the device is not support Thunderbolt IP
+   PENDING_TUNNEL      // the device support Thunderbolt IP and wait for driver to bring the Ethernet adapter up
 };
 
 /**
@@ -46,11 +50,11 @@ enum class P2P_STATE{
 class IP2PDevice
 {
 public:
-	virtual ~IP2PDevice(){};
-	virtual void HandleInterDomainRequest(const std::vector<uint8_t>& Msg) = 0 ;
-	virtual void HandleInterDomainResponse(const std::vector<uint8_t>& Msg)= 0;
-	virtual void SendPropertiesChangeResponse(const XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION& Msg) const = 0;
-	virtual void SendReadPropertiesResponse(uint32_t Offset, uint8_t sn) const = 0;
+   virtual ~IP2PDevice(){};
+   virtual void HandleInterDomainRequest(const std::vector<uint8_t>& Msg)                              = 0;
+   virtual void HandleInterDomainResponse(const std::vector<uint8_t>& Msg)                             = 0;
+   virtual void SendPropertiesChangeResponse(const XDOMAIN_PROPERTIES_CHANGED_NOTIFICATION& Msg) const = 0;
+   virtual void SendReadPropertiesResponse(uint32_t Offset, uint8_t sn) const = 0;
 
    /**
     * \brief Returns if full-E2E mode should be enabled for this P2P device
@@ -66,18 +70,17 @@ public:
    */
    virtual bool GetMatchFragmentsID() const = 0;
 
-   virtual void StartHandshake() = 0;
-	virtual void SendPropertiesChangeRequest() = 0;
-	virtual void OnSystemPreShutdown() = 0;
-	virtual const UniqueID& RemoteRouterUniqueID() const = 0;
-	virtual const ROUTE_STRING& LocalRouteString() const = 0;
-	virtual const UniqueID& LocalHostRouterUniqueID() const = 0;
-	virtual std::string RemoteHostName() const = 0;
-	virtual bool PathEstablished() const = 0;
-	virtual const controlleriD& ControllerID() const = 0;
-	virtual uint8_t Depth() const = 0;
-	virtual const std::atomic<P2P_STATE>& State() const = 0;
-	virtual void SetState(P2P_STATE value) = 0;
-
+   virtual void StartHandshake()                           = 0;
+   virtual void SendPropertiesChangeRequest()              = 0;
+   virtual void OnSystemPreShutdown()                      = 0;
+   virtual const UniqueID& RemoteRouterUniqueID() const    = 0;
+   virtual const ROUTE_STRING& LocalRouteString() const    = 0;
+   virtual const UniqueID& LocalHostRouterUniqueID() const = 0;
+   virtual std::string RemoteHostName() const              = 0;
+   virtual bool PathEstablished() const                    = 0;
+   virtual const controlleriD& ControllerID() const        = 0;
+   virtual uint8_t Depth() const                           = 0;
+   virtual const std::atomic<P2P_STATE>& State() const     = 0;
+   virtual void SetState(P2P_STATE value)                  = 0;
 };
 #endif // !_IP2P_DEVICE_H_

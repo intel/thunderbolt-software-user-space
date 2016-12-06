@@ -1,0 +1,2 @@
+This directory should ONLY contain the public-facing header files for this
+library.  Any non-public headers should be in ../src.

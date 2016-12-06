@@ -1,0 +1,120 @@
+Thunderbolt(TM) Daemon
+**********************
+
+License
+=======
+This daemon is distributed under a BSD-style license. See COPYING for the full
+license.
+
+
+Overview
+========
+Thunderbolt™ technology is a transformational high-speed, dual protocol
+I/O that provides unmatched performance with up to 40Gbps bi-directional
+transfer speeds. It provides flexibility and simplicity by supporting both
+data (PCIe, USB3.1) and video (DisplayPort) on a single cable connection
+that can daisy-chain up to six devices.
+
+In addition, the Thunderbolt Networking mode allows a connection of two
+computers through a Thunderbolt cable.
+
+
+Features
+========
+The Thunderbolt daemon (thunderboltd) is a user-space daemon that implements 2
+main functionalities:
+1. Completing the Thunderbolt Networking implementation.
+2. Implementing the host FW update functionality.
+
+
+Thunderbolt Networking Feature
+==============================
+Thunderbolt Networking appears as an Ethernet connection over the Thunderbolt
+controller.
+The daemon is responsible of the establishment of the communication between the
+computers and its management during its entire lifetime.
+The daemon is able to work with any peer computers, no matter which security
+level is currently deployed on them.
+
+
+Host FW Update Feature
+======================
+The daemon provides D-Bus interface for reading the host controller flash and
+for updating it with a new FW image. Only host FW update is supported, no device
+FW update support. Also, the support is only for DSL/JHL6000 controllers, not
+for earlier controllers.
+
+The recommended way to develop a FW update utility is to use the API provided by
+the libtbtfwu library.
+
+
+Supported OSes
+==============
+- Red Hat* Enterprise Linux 7.3
+- Ubuntu* 16.04
+- SUSE* Linux Enterprise Desktop 12 SP2
+
+
+Kernel/Daemon Compatibility
+===========================
+The daemon operates in coordination with the Thunderbolt kernel driver to
+provide the Thunderbolt functionalities.
+When upgrading to a newer version of the daemon, ensure that a compatible
+version of the kernel is used.
+By default, same build versions are compatible unless specified.
+
+
+Known Issues
+============
+- 4926679: Thunberbolt networking is not set properly
+* For systems deploying a "bridge configuration" on Red Hat* Enterprise Linux
+  7.0 Thunderbolt networking may not function properly.
+* In rare situations, Thunberbolt networking may not be established (no
+  Thunderbolt device eth appears) after a handshake is completed by the two
+  peers; a further re-plug of the cable will re-establish and create the eth
+  device.
+
+- 4927357: FWU commands can still be run while host controller is down but won't
+  be applied.
+
+- 4927376: After removing "thunderbolt_icm" kernel module, controller info is
+  still accessible
+
+- 4927389: After exiting safe mode, daemon continues to display that the
+  controller is in Safe mode
+* Currently, part of the information about host controller's state doesn't
+  change after the initial power on of the controller; a daemon re-start might
+  be necessary to refresh the powered on host controller list and state.
+
+
+Resolved Issues
+===============
+Version 16.1.50:
+- 4926652: Daemon is not working after initial install
+* There's a need to restart the system post-installtion to make the daemon work
+  properly.
+
+- 4926640: Daemon version logging is inaccurate
+* Prints of the version from the daemon logger are not printing right versions.
+
+- 4926767: make install can be run from outside Thunderbolt/Linux folder
+* Enter the folder on the build machine and run the make install command from
+  this location.
+
+
+Information
+===========
+Kernel code:
+    https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+
+Daemon / FW update library / sample FW update tool code:
+    https://github.com/01org/thunderbolt-software-user-space/tree/fwupdate
+
+Mailing list:
+    thunderbolt-software@lists.01.org
+    Register at: https://lists.01.org/mailman/listinfo/thunderbolt-software
+    Archives at: https://lists.01.org/pipermail/thunderbolt-software/
+
+For additional information about Thunderbolt technology visit:
+    https://01.org/thunderbolt-sw
+    https://thunderbolttechnology.net/

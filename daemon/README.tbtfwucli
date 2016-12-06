@@ -1,0 +1,60 @@
+Thunderbolt(TM) FW update sample tool
+*************************************
+
+License
+=======
+This tool is distributed under a BSD-style license. See COPYING for the full
+license.
+
+
+Overview
+========
+This is a preliminary sample of a command line tool that uses the FW update
+library. It implement a simple user interface for testing current FW version of
+a Thunderbolt host controller, validating FW image file compatibility with
+current controller and writing a new FW image file to the controller flash.
+
+This tool is provided as sample only for demonstrating how to use libtbtfwu
+interface.
+
+The kernel module, the daemon and the library have to be installed for using
+this tool.
+
+
+Supported OSes
+==============
+- Red Hat* Enterprise Linux 7.3
+- Ubuntu* 16.04
+- SUSE* Linux Enterprise Desktop 12 SP2
+
+
+Known Issues
+============
+16.2.57 (0.0.1):
+- 4927362, 4927379, 4927388, 4927404: In some cases, the error reporting can be
+  inaccurate or duplicated.
+
+- 4927405: The user is asked to approve the update even before the image
+  compatibility with the controller has been validated.
+
+
+Resolved Issues
+===============
+
+
+Information
+===========
+Kernel code:
+    https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+
+Daemon / FW update library / sample FW update tool code:
+    https://github.com/01org/thunderbolt-software-user-space/tree/fwupdate
+
+Mailing list:
+    thunderbolt-software@lists.01.org
+    Register at: https://lists.01.org/mailman/listinfo/thunderbolt-software
+    Archives at: https://lists.01.org/pipermail/thunderbolt-software/
+
+For additional information about Thunderbolt technology visit:
+    https://01.org/thunderbolt-sw
+    https://thunderbolttechnology.net/

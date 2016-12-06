@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  This file specifies a D-Bus object that represents the set of
+  all controllers in this system.
+-->
+<node name="/com/Intel/Thunderbolt1/controllers">
+ <interface name="com.Intel.Thunderbolt1.controllers">
+   <!-- Returns a list of fully-qualified D-Bus object
+        paths for the controllers registered to this system. -->
+   <method name="GetControllerList">
+     <arg type="as" name="retval" direction="out" />
+   </method>
+ </interface>
+</node>
+

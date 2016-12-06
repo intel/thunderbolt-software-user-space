@@ -1,0 +1,61 @@
+Thunderbolt(TM) FW update library
+*********************************
+
+License
+=======
+This library is distributed under a BSD-style license. See COPYING for the full
+license.
+
+
+Overview
+========
+This library supplies simpler, safer and higher-level interface of the FW update
+functionality supplied by Thunderbolt daemon.
+It currently supports FW update for host controller only.
+
+Thunderbolt daemon provides D-Bus interface for reading the host controller
+flash and for updating it with a new FW image.
+Using the D-Bus API directly isn't recommended. Instead, this library supplies a
+simpler,  higher-level interface for FW update.
+It also includes logic for validating the image compatibility with the actual
+controller before writing it to the flash.
+
+The interface is C API and described in the headers files under include/tbt.
+
+Both the kernel module and the daemon have to be installed for using this
+library.
+
+A sample code for command-line too is also available (see below).
+
+
+Supported OSes
+==============
+- Red Hat* Enterprise Linux 7.3
+- Ubuntu* 16.04
+- SUSE* Linux Enterprise Desktop 12 SP2
+
+
+Known Issues
+============
+
+
+Resolved Issues
+===============
+
+
+Information
+===========
+Kernel code:
+    https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking
+
+Daemon / FW update library / sample FW update tool code:
+    https://github.com/01org/thunderbolt-software-user-space/tree/fwupdate
+
+Mailing list:
+    thunderbolt-software@lists.01.org
+    Register at: https://lists.01.org/mailman/listinfo/thunderbolt-software
+    Archives at: https://lists.01.org/pipermail/thunderbolt-software/
+
+For additional information about Thunderbolt technology visit:
+    https://01.org/thunderbolt-sw
+    https://thunderbolttechnology.net/

@@ -1,0 +1,44 @@
+Installation Instructions:
+**************************
+Thunderbolt(TM) FW update library
+
+License
+=======
+This library is distributed under a BSD-style license. See COPYING for the full
+license.
+
+
+Prerequisites
+=============
+In order to compile and use the Thunderbolt FW update library, the following
+packages and library need to be installed:
+1. Kernel with supported Thunderbolt module
+   (https://github.com/01org/thunderbolt-software-kernel-tree/tree/networking)
+2. Thunderbolt daemon
+   (https://github.com/01org/thunderbolt-software-user-space/tree/fwupdate)
+3. g++ compiler (with c++11 support, tested with g++ 4.8.5 and 5.4.0)
+4. CMake >= 2.8.8 (http://www.cmake.org/)
+5. libdbus-c++ >= 0.5.0 (http://dbus-cplusplus.sourceforge.net/ or
+   development packages from the distribution repositories)
+
+
+Basic Installation
+==================
+The CMake command tries to find necessary libraries and system paths.
+Upon success, it will create Makefile which then can be compiled and installed
+using the make command.
+
+The simplest way to compile and install the library is:
+1. Create a directory named e.g. 'libtbtfwu-build' and change directory to it
+2. Run 'cmake ../fwupdate/libtbtfwu -DCMAKE_BUILD_TYPE=Release'
+3. Run 'make'
+4. Run 'sudo make install'
+
+
+RPM/DEB Package Creation
+========================
+For easy installation/removal on distributions with RPM or DEB package managers,
+CPack can be used to generate RPM/DEB package for installation (instead of 'make
+install' from step 4 above).
+Run 'cpack' for generating RPM package or 'cpack -G DEB' for DEB package, then
+install the generated package by the package manager.

@@ -1,29 +1,32 @@
-/*******************************************************************************
+/********************************************************************************
+ * Thunderbolt(TM) daemon
+ * This daemon is distributed under the following BSD-style license:
  *
- * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ *     * Redistributions of source code must retain the above copyright notice,
+ *       this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Intel Corporation nor the names of its contributors
+ *       may be used to endorse or promote products derived from this software
+ *       without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
- * Contact Information:
- * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
-
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
 
 #ifndef UTILS_H_
 #define UTILS_H_
@@ -35,50 +38,50 @@
 #include "IP2PDevice.h"
 #include "logger.h"
 #include "tbtException.h"
+#include "boost/optional.hpp"
 
-template<typename T>
-	void ignore(T &&) {
-	}
+template <typename T>
+void ignore(T&&)
+{
+}
 //************************************
 // Method:    GetBufStruct
 // FullName:  GetBufStruct
-// Access:    public 
-// Returns:   
+// Access:    public
+// Returns:
 // Qualifier:
 // Parameter: const std::vector<uint8_t> & Msg
 //************************************
 template <class T>
-std::shared_ptr<T> GetBufStruct(const std::vector<uint8_t>& Msg )
+std::shared_ptr<T> GetBufStruct(const std::vector<uint8_t>& Msg)
 {
-	try
-	{
-		uint8_t* Buf = new uint8_t[Msg.size()];
+   try
+   {
+      uint8_t* Buf = new uint8_t[Msg.size()];
       // We don't use memcpy because GCC doesn't support it within a template function
       for (uint32_t i = 0; i < Msg.size(); i++)
       {
          Buf[i] = Msg[i];
       }
-		std::shared_ptr<T> pStruct(reinterpret_cast<T*>(Buf), [](T* t){
-			delete[] reinterpret_cast<uint8_t*>(t);
-		});
-		return pStruct;
-	}
-	catch (const std::exception& e)
-	{
-		TbtServiceLogger::LogError("Error: GetBufStruct failed: %s",e.what());
-		throw;
-	}
-	catch(...)
-	{
-		TbtServiceLogger::LogError("Error: GetBufStruct unknown exception");
-		throw;
-	}
+      std::shared_ptr<T> pStruct(reinterpret_cast<T*>(Buf), [](T* t) { delete[] reinterpret_cast<uint8_t*>(t); });
+      return pStruct;
+   }
+   catch (const std::exception& e)
+   {
+      TbtServiceLogger::LogError("Error: GetBufStruct failed: %s", e.what());
+      throw;
+   }
+   catch (...)
+   {
+      TbtServiceLogger::LogError("Error: GetBufStruct unknown exception");
+      throw;
+   }
 }
 
 //************************************
 // Method:    StringToWString
 // FullName:  StringToWString
-// Access:    public 
+// Access:    public
 // Returns:   std::wstring
 // Qualifier:
 // Parameter: const std::string & Str
@@ -88,7 +91,7 @@ std::wstring StringToWString(const std::string& Str);
 //************************************
 // Method:    WStringToString
 // FullName:  WStringToString
-// Access:    public 
+// Access:    public
 // Returns:   std::string
 // Qualifier:
 // Parameter: const std::wstring & Str
@@ -98,7 +101,7 @@ std::string WStringToString(const std::wstring& Str);
 //************************************
 // Method:    GetTemplateClassName
 // FullName:  GetTemplateClassName
-// Access:    public static 
+// Access:    public static
 // Returns:   std::wstring - The class name of a template type
 // Qualifier:
 //************************************
@@ -115,7 +118,7 @@ std::wstring GetTemplateClassName()
 //************************************
 // Method:    ArrayDwordSwap
 // FullName:  ArrayDwordSwap
-// Access:    public 
+// Access:    public
 // Returns:   HRESULT
 // Qualifier:
 // Parameter: PUCHAR Array
@@ -127,7 +130,7 @@ void ArrayDwordSwap(uint8_t* Array, size_t Size);
 //************************************
 // Method:    CalculateCrc
 // FullName:  CalculateCrc
-// Access:    public 
+// Access:    public
 // Returns:   uint32_t
 // Qualifier:
 // Parameter: PUCHAR Array
@@ -139,25 +142,25 @@ uint32_t CalculateCrc(uint8_t* Array, size_t Size);
 //************************************
 // Method:    ControllerSettingsToEnum
 // FullName:  ControllerSettingsToEnum
-// Access:    public 
+// Access:    public
 // Returns:   uint32_t
 // Qualifier:
 // Parameter: bool certifiedOnly
 // Parameter: bool overrideFirstDepth
 // Convert Flags to Uint
 //************************************
-uint32_t ControllerSettingsToEnum(bool certifiedOnly,bool overrideFirstDepth);
+uint32_t ControllerSettingsToEnum(bool certifiedOnly, bool overrideFirstDepth);
 
-template<typename T>
+template <typename T>
 inline size_t DwSizeOf()
 {
-	return sizeof(T) / sizeof(uint32_t);
+   return sizeof(T) / sizeof(uint32_t);
 }
 
 enum class DEVICE_STATE_EVENT;
 enum class DEVICE_STATE;
 
-//Doubles the occurrences of '\' on input
+// Doubles the occurrences of '\' on input
 std::wstring Backshlashify(const std::wstring& input);
 
 std::wstring RemoveoDoubleSlash(const std::wstring& input);
@@ -177,15 +180,53 @@ uint32_t ControllerIDToToInt(const controlleriD& ID);
 int32_t IsAuthenticationSupported();
 
 /**
- * \brief Utility for silencing GCC when we really meant for empty init-list for POD
+ * \brief Representing version information (used currently for NVM version)
+ *
+ * It handles conversion to/from string, and can hold the special string "N/A"
+ * (by getting it explicitly or by default c-tor). In this case, major() returns
+ * an empty 'optional'.
+ *
+ * The number parts are with uint32_t instead of a narrower type because the
+ * internal conversion uses streams and they have to be treated as numbers, not
+ * as char/wchar_t.
  */
-template<typename T>
-T emptyInit()
+class Version
 {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-return {};
-#pragma GCC diagnostic pop
+public:
+   static const std::wstring NA;
+
+   Version(uint32_t major, uint32_t minor);
+   explicit Version(const std::wstring& version = NA);
+
+   boost::optional<uint32_t> major() const { return m_major; }
+   boost::optional<uint32_t> minor() const { return m_minor; }
+   const std::wstring& wstr() const { return m_str; }
+
+private:
+   boost::optional<uint32_t> m_major;
+   boost::optional<uint32_t> m_minor;
+   std::wstring m_str;
+};
+
+template <typename String = std::string, typename T>
+String toHexString(T v, bool showbase = true)
+{
+   std::basic_ostringstream<typename String::value_type> ret;
+   ret << (showbase ? std::showbase : std::noshowbase) << std::hex << v;
+   return ret.str();
 }
 
-#endif
+/**
+ * \brief Save and automatically restore stream flags so you can set stream flags
+ * without affecting later uses of the stream
+ */
+struct StreamFlagProtector
+{
+   StreamFlagProtector(std::ios_base& stream) : stream(stream), flags(stream.flags()) {}
+   ~StreamFlagProtector() { stream.flags(flags); }
+
+   std::ios_base& stream;
+   std::ios_base::fmtflags flags;
+};
+
+#endif /* UTILS_H_ */

@@ -1,0 +1,25 @@
+{
+  global:
+    tbt_fwu_init;
+    tbt_fwu_init2;
+    tbt_fwu_shutdown;
+
+    tbt_strerror;
+    tbt_setLogLevel;
+    tbt_lastErrorDetail;
+
+    tbt_fwu_getImageNVMVersion;
+
+    tbt_fwu_getControllerList;
+    tbt_fwu_freeControllerList;
+    tbt_fwu_Controller_getDBusID;
+    tbt_fwu_Controller_getID;
+    tbt_fwu_Controller_isInSafeMode;
+    tbt_fwu_Controller_validateFWImage;
+    tbt_fwu_Controller_getNVMVersion;
+    tbt_fwu_Controller_getVendorID;
+    tbt_fwu_Controller_getModelID;
+    tbt_fwu_Controller_updateFW;
+
+  local: *;
+};

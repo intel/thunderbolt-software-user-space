@@ -1,28 +1,32 @@
-/*******************************************************************************
+/********************************************************************************
+ * Thunderbolt(TM) daemon
+ * This daemon is distributed under the following BSD-style license:
  *
- * Intel Thunderbolt daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2011 - 2016 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ *     * Redistributions of source code must retain the above copyright notice,
+ *       this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Intel Corporation nor the names of its contributors
+ *       may be used to endorse or promote products derived from this software
+ *       without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
- * Contact Information:
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
-
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
 
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
@@ -77,24 +81,14 @@ typedef struct _ROUTE_STRING
 // Devices are exposed to user based on physical ports.
 #define TBT_CHANNEL_PER_PORT_NUM 2
 
-// Calculate host physcial port number (Zero-based numbering) from host channel/link which starts from 1:
+// Calculate host physical port number (Zero-based numbering) from host channel/link which starts from 1:
 // 1 and 2 -> 0, 3 and 4 -> 1, etc ...
-#define TBT_GET_PORT_BY_LINK(_link) ((_link - 1) / TBT_CHANNEL_PER_PORT_NUM)
-
-// EP name consts - For parsing the EP name structure
-#define EP_NAME_VENDOR_NAME_STRUCT_LENGTH_OFFSET                              0
-#define EP_NAME_VENDOR_NAME_STRUCT_VALUE_OFFSET                               1
-#define EP_NAME_VENDOR_NAME_DATA_OFFSET_INTERNAL                              2
-#define EP_NAME_VENDOR_NAME_STRUCT_VALUE                                      1
-#define EP_NAME_GET_MODEL_NAME_STRUCT_LENGTH_OFFSET(VendorNameStructLength)   (VendorNameStructLength)
-#define EP_NAME_GET_MODEL_NAME_STRUCT_VALUE_OFFSET(VendorNameStructLength)    (VendorNameStructLength + 1)
-#define EP_NAME_MODEL_NAME_DATA_OFFSET_INTERNAL                               2
-#define EP_NAME_GET_MODEL_NAME_DATA_OFFSET(VendorNameStructLength)            (VendorNameStructLength + EP_NAME_MODEL_NAME_DATA_OFFSET_INTERNAL)
-#define EP_NAME_MODEL_NAME_STRUCT_VALUE                                       2
+#define TBT_GET_PORT_BY_LINK(_link) (UINT8)((_link - 1) / TBT_CHANNEL_PER_PORT_NUM)
 
 // PDF values for SW<->FW communication in raw mode
 typedef enum _PDF_VALUE
 {
+   PDF_FW_IS_IN_SAFE_MODE_NOTIFICATION = -2,
    PDF_DRIVER_QUERY_DRIVER_INFORMATION =-1,
    PDF_READ_CONFIGURATION_REGISTERS = 1,   // CIO read request/response
    PDF_WRITE_CONFIGURATION_REGISTERS,  // CIO write request/response
@@ -119,6 +113,7 @@ typedef enum _SW_TO_FW_COMMAND_CODE
    APPROVE_PCI_CONNECTION_COMMAND_CODE,
    CHALLENGE_PCI_CONNECTION_COMMAND_CODE,
    ADD_DEVICE_AND_KEY_COMMAND_CODE,
+   I2C_REGISTER_ACCESS_COMMAND_CODE = 0xE,
    APPROVE_INTER_DOMAIN_CONNECTION_COMMAND_CODE = 0x10
 } SW_TO_FW_COMMAND_CODE;
 
@@ -132,6 +127,7 @@ typedef enum _FW_TO_SW_RESPONSE_CODE
    CHALLENGE_PCI_CONNECTION_RESPONSE_CODE,
    ADD_DEVICE_AND_KEY_RESPONSE_CODE,
    INTER_DOMAIN_PACKET_SENT_RESPONSE_CODE = 8,
+   I2C_REGISTER_ACCESS_RESPONSE_CODE = 0xE,
    APPROVE_INTER_DOMAIN_CONNECTION_RESPONSE_CODE = 0x10
 } FW_TO_SW_RESPONSE_CODE;
 
@@ -692,6 +688,57 @@ typedef struct _INTER_DOMAIN_PACKET_SENT_RESPONSE
 } INTER_DOMAIN_PACKET_SENT_RESPONSE;
 
 C_ASSERT( sizeof( INTER_DOMAIN_PACKET_SENT_RESPONSE ) == (2 * sizeof( UINT32 )) );
+
+typedef struct _I2C_REGISTERS_ACCESS_COMMAND
+{
+   // DWORD 0
+   UINT32   RequestCode                               : BITFIELD_RANGE( 0, 7 );     // SW_TO_FW_COMMAND_CODE enum - 0x0E - I2C_REGISTER_ACCESS_COMMAND_CODE
+   UINT32                                             : BITFIELD_RANGE( 8, 31 );
+
+   // DWORD 1
+   UINT32   LocalLink                                 : BITFIELD_RANGE( 0, 2 );     // n/a for host
+   UINT32                                             : BITFIELD_BIT( 3 );
+   UINT32   LocalDepth                                : BITFIELD_RANGE( 4, 7 );     // 0 for host
+   UINT32   TbtPort                                   : BITFIELD_RANGE( 8, 10 );    // 1 = portA, 2 = portB; which PD to query
+   UINT32   Write                                     : BITFIELD_BIT( 11 );         // 0 = read
+   UINT32                                             : BITFIELD_RANGE( 12, 17 );
+   UINT32   Length                                    : BITFIELD_RANGE( 18, 23 );   // 0 = max length (64)
+   UINT32   Offset                                    : BITFIELD_RANGE( 24, 31 );
+
+   // DWORD 2 - 17
+   UINT32   Data[16];
+
+   // DWORD 18
+   UINT32   Crc;
+} I2C_REGISTERS_ACCESS_COMMAND;
+
+C_ASSERT( sizeof( I2C_REGISTERS_ACCESS_COMMAND ) == (19 * sizeof( UINT32 )) );
+
+typedef struct _I2C_REGISTERS_ACCESS_RESPONSE
+{
+   // DWORD 0
+   UINT32   RequestCode                               : BITFIELD_RANGE( 0, 7 );     // SW_TO_FW_COMMAND_CODE enum - 0x0E - I2C_REGISTER_ACCESS_COMMAND_CODE
+   UINT32   ErrorFlag                                 : BITFIELD_BIT( 8 );
+   UINT32                                             : BITFIELD_RANGE( 9, 31 );
+
+   // DWORD 1
+   UINT32   LocalLink                                 : BITFIELD_RANGE( 0, 2 );     // n/a for host
+   UINT32                                             : BITFIELD_BIT( 3 );
+   UINT32   LocalDepth                                : BITFIELD_RANGE( 4, 7 );     // 0 for host
+   UINT32   TbtPort                                   : BITFIELD_RANGE( 8, 10 );    // 1 = portA, 2 = portB; which PD to query
+   UINT32   Write                                     : BITFIELD_BIT( 11 );         // 0 = read
+   UINT32   ActualLength                              : BITFIELD_RANGE( 12, 17 );
+   UINT32   Length                                    : BITFIELD_RANGE( 18, 23 );   // 0 = max length (64)
+   UINT32   Offset                                    : BITFIELD_RANGE( 24, 31 );
+
+   // DWORD 2 - 17
+   UINT32   Data[16];
+
+   // DWORD 18
+   UINT32   Crc;
+} I2C_REGISTERS_ACCESS_RESPONSE;
+
+C_ASSERT( sizeof( I2C_REGISTERS_ACCESS_RESPONSE ) == (19 * sizeof( UINT32 )) );
 
 typedef struct _DEVICE_CONNECTED_NOTIFICATION
 {
@@ -1331,7 +1378,7 @@ typedef struct _THUNDERBOLT_IP_STATUS
       UINT32      Crc;
    } P2P_MSG_CONNECT;
 
-   // Notification that a peer is going to be disconnected (driver unload, Sx, �)
+   // Notification that a peer is going to be disconnected (driver unload, Sx, ...)
    typedef struct _P2P_MSG_DISCONNECT
    {
       // DWORD 0 - 5

@@ -1,32 +1,34 @@
-/*******************************************************************************
+/********************************************************************************
+ * Thunderbolt(TM) daemon
+ * This daemon is distributed under the following BSD-style license:
  *
- * Intel Thunderbolt(TM) daemon
- * Copyright(c) 2014 - 2015 Intel Corporation.
+ * Copyright(c) 2014 - 2016 Intel Corporation.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ *     * Redistributions of source code must retain the above copyright notice,
+ *       this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Intel Corporation nor the names of its contributors
+ *       may be used to endorse or promote products derived from this software
+ *       without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
- * Contact Information:
- * Intel Thunderbolt Mailing List <thunderbolt-software@lists.01.org>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
 
-
-#ifndef _CONNECTION_MANAGER_BASE_
-#define _CONNECTION_MANAGER_BASE_
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -46,48 +48,62 @@ using std::unique_ptr;
 /**
  * This class contains the main logic of the daemon
  */
-class ConnectionManagerBase :
-   public IConnectionManager
+class ConnectionManagerBase : public IConnectionManager
 {
-public: 
+public:
+   ConnectionManagerBase(std::shared_ptr<IControllerCommandSender>& sender);
 
-	ConnectionManagerBase(std::shared_ptr<IControllerCommandSender>& sender);
+   virtual ~ConnectionManagerBase() {}
 
-	virtual ~ConnectionManagerBase()
-	{
-	}
+   void RegisterExitCallback(std::function<void()> ExitCallback);
+   // Notifications from FW
+   virtual void OnInterDomainConnect(const controlleriD&, const INTER_DOMAIN_CONNECTED_NOTIFICATION& e);
+   virtual void OnInterDomainDisconnected(const controlleriD&, const INTER_DOMAIN_DISCONNECTED_NOTIFICATION& e);
+   // Responses from FW
+   virtual void OnDriverReadyResponse(const controlleriD&, const DRIVER_READY_RESPONSE& e);
 
-    void RegisterExitCallback(std::function<void()> ExitCallback);
-	// Notifications from FW
-   virtual void OnInterDomainConnect( const controlleriD&,const INTER_DOMAIN_CONNECTED_NOTIFICATION& e );
-   virtual void OnInterDomainDisconnected( const controlleriD&,const INTER_DOMAIN_DISCONNECTED_NOTIFICATION& e );
-	// Responses from FW
-   virtual void OnDriverReadyResponse( const controlleriD&,const DRIVER_READY_RESPONSE& e );
    virtual void OnServiceDown();
-   virtual shared_ptr<IController> GetController( const controlleriD& Cid) const;
-   virtual const map<controlleriD,shared_ptr<IController>>& GetControllers() const;
+   virtual shared_ptr<IController> GetController(const controlleriD& Cid) const;
+   virtual map<controlleriD, shared_ptr<IController>> GetControllers() const;
    virtual IControllerCommandSender& GetControllerCommandSender() const;
-   virtual void QueryDriverInformation(const controlleriD& Cid) ;
-	virtual std::shared_ptr<ControllerSettings> GetControllersSettings() const;
-	virtual void SetControllersSettings(const std::shared_ptr<ControllerSettings> Settings);
-	virtual void setPreShutdownMode() {m_isPreShutdownMode = true;};
-	virtual bool isPreShutdownMode() const {return m_isPreShutdownMode;};
-   std::shared_ptr<IP2PDevice> GetP2PDevice(controlleriD cId, uint32_t portNum);
-   const std::shared_ptr<IP2PDevice> GetP2PDevice(controlleriD cId, uint32_t portNum) const;
+
+   /**
+    * \brief Queries driver for information about the driver and a specific controller
+    *
+    * Please note: this function just sent the query, the data retrival happens in
+    * LinuxControllerCommandSender::OnEvent()
+    *
+    * \param[in]  Cid   Controller ID as retrieved from the driver
+    */
+   virtual void QueryDriverInformation(const controlleriD& Cid);
+
+   virtual void SetFwUpdateStatus(bool isInFwUpdateProcess);
+
+   virtual bool IsDuringFwUpdate() const noexcept;
+   virtual void OnFwIsInSafeMode(const controlleriD&);
+
+   virtual std::shared_ptr<ControllerSettings> GetControllersSettings() const;
+   virtual void SetControllersSettings(const std::shared_ptr<ControllerSettings> Settings);
+   virtual void setPreShutdownMode() { m_isPreShutdownMode = true; };
+   virtual bool isPreShutdownMode() const { return m_isPreShutdownMode; };
+   std::shared_ptr<P2PDevice> GetP2PDevice(controlleriD cId, uint32_t portNum);
+   const std::shared_ptr<P2PDevice> GetP2PDevice(controlleriD cId, uint32_t portNum) const;
    virtual void OnSystemPreShutdown();
+
 protected:
    shared_ptr<IControllerCommandSender> m_ControllerCommandSender;
-   map<controlleriD,shared_ptr<IController>> m_Controllers;
-	bool m_isPreShutdownMode;
+   map<controlleriD, shared_ptr<IController>> m_Controllers;
+   mutable std::mutex m_ControllersGuard;
+   bool m_isPreShutdownMode;
    std::function<void()> m_ExitCallback;
+
 protected:
    std::shared_ptr<ControllerSettings> m_ControllersSettings;
+   bool m_DuringPowerCycle;
+   bool m_DuringFwUpadte;
 
 private:
-	// No Copy or assignment to prevent memory dup
-	ConnectionManagerBase(const ConnectionManagerBase&);
-	ConnectionManagerBase& operator=(const ConnectionManagerBase&);
+   // No Copy or assignment to prevent memory dup
+   ConnectionManagerBase(const ConnectionManagerBase&);
+   ConnectionManagerBase& operator=(const ConnectionManagerBase&);
 };
-
-
-#endif // !_CONNECTION_MANAGER_BASE_
