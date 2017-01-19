@@ -14,6 +14,7 @@
     tbt_fwu_freeControllerList;
     tbt_fwu_Controller_getDBusID;
     tbt_fwu_Controller_getID;
+    tbt_fwu_Controller_getPCIAddress;
     tbt_fwu_Controller_isInSafeMode;
     tbt_fwu_Controller_validateFWImage;
     tbt_fwu_Controller_getNVMVersion;

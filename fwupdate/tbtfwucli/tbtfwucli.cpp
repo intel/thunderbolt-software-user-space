@@ -1,3 +1,33 @@
+/********************************************************************************
+ * Thunderbolt(TM) FW update sample tool
+ * This library is distributed under the following BSD-style license:
+ *
+ * Copyright(c) 2016 - 2017 Intel Corporation.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright notice,
+ *       this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Intel Corporation nor the names of its contributors
+ *       may be used to endorse or promote products derived from this software
+ *       without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
+
 #include <cinttypes>
 #include <tbt/tbt_fwu.h>
 #include <stdio.h>
@@ -121,6 +151,7 @@ static int updateFW(tbt_fwu_Controller* pCtrl, std::string fn, bool bPrompt);
 static int validateFWImage(tbt_fwu_Controller* pCtrl, std::string fn);
 static int getCurrentNVMVersion(tbt_fwu_Controller* pCtrl);
 static int getImageNVMVersion(std::string filename);
+static int getPCIAddress(tbt_fwu_Controller* pCtrl);
 static int getModelID(tbt_fwu_Controller* pCtrl);
 static int getVendorID(tbt_fwu_Controller* pCtrl);
 static int isInSafeMode(tbt_fwu_Controller* pCtrl);
@@ -134,14 +165,14 @@ void usage(int argc __attribute__((unused)), char** argv)
           "  or   %s GetVendorID <controller>\n"
           "  or   %s GetModelID <controller>\n"
           "  or   %s GetImageNVMVersion <image_filename>\n"
+          "  or   %s GetPCIAddress <controller>\n"
           "  or   %s FWUpdate <controller> <image_filename> [--no-prompt]\n"
           "\n"
-          "The <controller> argument must be one of the D-Bus controller\n"
-          "object names returned by the getControllerList call.  (The\n"
-          "controller's own notion of its ID can be retrieved with the\n"
-          "getControllerID call.)\n"
+          "The <controller> argument must be one of the controller IDs\n"
+          "returned by the EnumControllers call.\n"
           "\n",
 
+          argv[0],
           argv[0],
           argv[0],
           argv[0],
@@ -275,6 +306,10 @@ int main(int argc, char** argv)
    {
       return isInSafeMode(pCtrl);
    }
+   else if (cmd == "getPCIAddress" || cmd == "GetPCIAddress")
+   {
+      return getPCIAddress(pCtrl);
+   }
    else
    {
       fprintf(stderr, "invalid command: %s\n", cmd.c_str());
@@ -387,7 +422,21 @@ static int updateFW(tbt_fwu_Controller* pCtrl, std::string fn, bool bPrompt)
       // fall through
    }
 
-   rc = tbt_fwu_Controller_updateFW(pCtrl, &fwimg[0], fwimg.size());
+   auto progress_cb = [](uint32_t percentage, void*) {
+      if (percentage % 5)
+      {
+         printf(".");
+      }
+      else
+      {
+         printf("%u%%", percentage);
+      }
+      fflush(stdout);
+   };
+
+   rc = tbt_fwu_Controller_updateFW(pCtrl, &fwimg[0], fwimg.size(), progress_cb, nullptr);
+   printf("\n"); // To separate the progress reporting from the next message
+
    if (rc != TBT_OK)
    {
       fprintf(stderr, "FW update failed: 0x%x %s\n", rc, tbt_lastErrorDetail());
@@ -411,6 +460,22 @@ static int getCurrentNVMVersion(tbt_fwu_Controller* pCtrl)
    else
    {
       printf("%" PRIx32 ".%02" PRIx32 "\n", major, minor);
+   }
+
+   return rc;
+}
+
+static int getPCIAddress(tbt_fwu_Controller* pCtrl)
+{
+   uint16_t address;
+   int rc = tbt_fwu_Controller_getPCIAddress(pCtrl, &address);
+   if (rc != TBT_OK)
+   {
+      fprintf(stderr, "getPCIAddress failed: 0x%x %s\n", rc, tbt_lastErrorDetail());
+   }
+   else
+   {
+      printf("0x%04" PRIx16 " = %02x:%02x.%x\n", address, address >> 8, (address & 0xFF) >> 3, (address & 0x3));
    }
 
    return rc;

@@ -2,7 +2,7 @@
  * Thunderbolt(TM) FW update library
  * This library is distributed under the following BSD-style license:
  *
- * Copyright(c) 2016 Intel Corporation.
+ * Copyright(c) 2016 - 2017 Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,6 +33,7 @@
 #include "tbt/tbt_fwu_err.h"
 #include "util.h"
 #include <arpa/inet.h>
+#include <limits>
 
 #include <stdio.h>
 
@@ -49,6 +50,10 @@ FileFwInfoSource::FileFwInfoSource(const std::vector<uint8_t>& image) : FwInfoSo
 
 std::vector<uint8_t> FileFwInfoSource::Read(uint32_t offset, uint32_t length)
 {
+   if (offset > std::numeric_limits<uint32_t>::max() - length)
+   {
+      TBT_THROW(TBT_SDK_INVALID_IMAGE_FILE);
+   }
    if (m_rImage.size() < (offset + length))
    {
       TBT_THROW(TBT_SDK_INVALID_IMAGE_FILE);

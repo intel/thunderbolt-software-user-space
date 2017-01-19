@@ -2,7 +2,7 @@
  * Thunderbolt(TM) FW update library
  * This library is distributed under the following BSD-style license:
  *
- * Copyright(c) 2016 Intel Corporation.
+ * Copyright(c) 2016 - 2017 Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -210,7 +210,9 @@ std::vector<uint8_t> Controller::ReadFirmware(uint32_t offset, uint32_t length)
    return data;
 }
 
-uint32_t Controller::UpdateFirmware(const std::vector<uint8_t>& fwimg)
+uint32_t Controller::UpdateFirmware(const std::vector<uint8_t>& fwimg,
+                                    void (*progress_cb)(uint32_t percentage, void* user_data),
+                                    void* user_data)
 {
    uint32_t rc;
    uint32_t txnid;
@@ -259,11 +261,50 @@ uint32_t Controller::UpdateFirmware(const std::vector<uint8_t>& fwimg)
    // is done.  However, perhaps there will be some error modes: the daemon
    // could deadlock or crash, for example.  We spin up a thread to break us
    // out of the blocking wait after a timeout.
-   std::thread th([this, &quitDispatch]() {
-      std::unique_lock<std::mutex> l(m_fwu_mutex);
+   std::thread th([this, &quitDispatch, progress_cb, user_data]() {
 
-      // Block til either the timeout fires or the FWU is done.
-      (void)m_fwu_signal.wait_for(l, std::chrono::seconds(600), [this]() { return m_fwu_done; });
+      namespace cr       = std::chrono;
+      const auto timeout = cr::minutes(10);
+
+      if (!progress_cb)
+      {
+         std::unique_lock<std::mutex> l(m_fwu_mutex);
+         // Block til either the timeout fires or the FWU is done.
+         (void)m_fwu_signal.wait_for(l, timeout, [this]() { return m_fwu_done; });
+      }
+
+      else
+      {
+         const auto expectedUpdateTime = cr::minutes(2);
+         const auto onePercent         = cr::duration_cast<cr::milliseconds>(expectedUpdateTime) / 100;
+
+         // Encapsulating the loop in a local function to be able to break early
+         // and signal it out. Returns true if it breaks because FW update done,
+         // false - if returned by end of the loop.
+         auto progressLoop = [&] {
+            for (uint32_t percentage = 0; percentage < 99;) // so we don't reach 100 too soon
+            {
+               std::unique_lock<std::mutex> l(m_fwu_mutex);
+               if (m_fwu_signal.wait_for(l, onePercent, [this]() { return m_fwu_done; }))
+               {
+                  return true;
+               }
+               ++percentage;
+               progress_cb(percentage, user_data);
+            }
+            return false;
+         };
+
+         if (!progressLoop())
+         {
+            std::unique_lock<std::mutex> l(m_fwu_mutex);
+            // Block til either the timeout fires or the FWU is done.
+            (void)m_fwu_signal.wait_for(l, timeout - expectedUpdateTime, [this]() { return m_fwu_done; });
+         }
+
+         // Report 100 anyway
+         progress_cb(100, user_data);
+      }
 
       // Either way, break the main thread out of the D-Bus dispatch loop.
       quitDispatch = true;

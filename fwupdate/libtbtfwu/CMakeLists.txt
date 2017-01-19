@@ -5,8 +5,8 @@ set(CMAKE_ECLIPSE_VERSION 4.4)
 
 project("libtbtfwu")
 
-set(LIBTBTFWU_VERSION_MAJOR 0)
-set(LIBTBTFWU_VERSION_MINOR 9)
+set(LIBTBTFWU_VERSION_MAJOR 1)
+set(LIBTBTFWU_VERSION_MINOR 0)
 set(LIBTBTFWU_VERSION_PATCH 0)
 
 set(ROOT_CODE_DIR ${CMAKE_SOURCE_DIR}/../..)
@@ -139,6 +139,12 @@ set_target_properties(tbtfwu
         PUBLIC_HEADER ${H_FILES}
 )
 
+# pkg-config file handling
+configure_file("${PROJECT_NAME}.pc.in" "${PROJECT_NAME}.pc" @ONLY)
+install(FILES       "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+# RPM/DEB package creation
 include(rpm-workaround)
 
 set(CPACK_PACKAGE_VERSION ${LIBTBTFWU_FULL_VERSION})

@@ -2,7 +2,7 @@
  * Thunderbolt(TM) FW update library
  * This library is distributed under the following BSD-style license:
  *
- * Copyright(c) 2016 Intel Corporation.
+ * Copyright(c) 2016 - 2017 Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -210,6 +210,16 @@ int tbt_fwu_Controller_getNVMVersion(struct tbt_fwu_Controller* pController, uin
    });
 }
 
+extern int tbt_fwu_Controller_getPCIAddress(struct tbt_fwu_Controller* pController, uint16_t* address)
+{
+   const int addressSize = 4;
+   return wrap("getting model ID", [address, pController]() {
+      auto id  = pController->m_pController->GetID();
+      *address = stoul(id.substr(0, addressSize), 0, 16);
+      return TBT_OK;
+   });
+}
+
 int tbt_fwu_Controller_getModelID(struct tbt_fwu_Controller* pController, uint16_t* pID)
 {
    if (UNLIKELY(!tbtController_valid(pController)))
@@ -318,6 +328,12 @@ int tbt_fwu_getControllerList(struct tbt_fwu_Controller*** papControllers, size_
       tbt::DBusControllersProxy proxy(
          g_pCtx->GetConnection(), "/com/Intel/Thunderbolt1/controllers", g_pCtx->GetEndpoint().c_str());
       std::vector<std::string> lCtrls = proxy.GetControllerList();
+      /* We allocate two extra pointers.  The first extra pointer is at the
+       * head of the array and contains a magic value used for error checking.
+       * (This is not visible to the library user.)  The second extra pointer
+       * is at the end of the array and is a null terminator.  This is an
+       * unpublished API feature that we may choose to publish at a later time.
+       */
       apControllers = (struct tbt_fwu_Controller**)calloc(lCtrls.size() + 2, sizeof(struct tbt_fwu_Controller*));
       if (!apControllers)
       {
@@ -328,7 +344,21 @@ int tbt_fwu_getControllerList(struct tbt_fwu_Controller*** papControllers, size_
       size_t i = 0;
       for (auto ctrlID : lCtrls)
       {
-         apControllers[i++] = tbtController_new(g_pCtx, ctrlID);
+         try
+         {
+            apControllers[i] = tbtController_new(g_pCtx, ctrlID);
+            ++i;
+         }
+         catch (...)
+         {
+            for (size_t j = 0; j < i; j++)
+            {
+               tbtController_delete(apControllers[j]);
+            }
+            --apControllers;
+            free(apControllers);
+            throw;
+         }
       }
       *papControllers = apControllers;
       *pnControllers  = lCtrls.size();
@@ -425,7 +455,12 @@ int tbt_fwu_Controller_validateFWImage(struct tbt_fwu_Controller* pController, c
    });
 }
 
-int tbt_fwu_Controller_updateFW(struct tbt_fwu_Controller* pController, const uint8_t* pBuffer, size_t nBuffer)
+int tbt_fwu_Controller_updateFW(struct tbt_fwu_Controller* pController,
+                                const uint8_t* pBuffer,
+                                size_t nBuffer,
+                                void (*progress_cb)(uint32_t percentage, void* user_data),
+                                void* user_data)
+
 {
    if (UNLIKELY(!tbtController_valid(pController)))
    {
@@ -451,10 +486,10 @@ int tbt_fwu_Controller_updateFW(struct tbt_fwu_Controller* pController, const ui
               "is in safe mode.",
               tbt_fwu_Controller_getDBusID(pController));
    }
-   return wrap("updating firmware", [pController, pBuffer, nBuffer]() {
+   return wrap("updating firmware", [pController, pBuffer, nBuffer, progress_cb, user_data]() {
       std::vector<uint8_t> vec;
       vec.assign(pBuffer, pBuffer + nBuffer);
-      return pController->m_pController->UpdateFirmware(vec);
+      return pController->m_pController->UpdateFirmware(vec, progress_cb, user_data);
    });
 }
 

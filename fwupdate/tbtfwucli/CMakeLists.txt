@@ -6,7 +6,7 @@ set(CMAKE_ECLIPSE_VERSION 4.4)
 project("tbtfwucli")
 
 include(BuildVersion.txt)
-set(VERSION "0.0.1+${BUILD_VERSION}")
+set(VERSION "0.0.2+${BUILD_VERSION}")
 
 set(ROOT_CODE_DIR ${CMAKE_SOURCE_DIR}/../..)
 

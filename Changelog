@@ -1,5 +1,23 @@
 Thunderbolt Linux releases
 ==========================
+19-January-2017:
+================
+tbtfwucli
+---------
+    - Added getPCIAddress command to use the new library API tbt_fwu_Controller_getPCIAddress()
+    - Adapted to the modified signature of tbt_fwu_Controller_updateFW()
+    - Added printing of FW update progress status
+    - Fixed GitHub issue #7 - (Cosmetic) tbtfwucli help description isn't accurate
+    - tbtfwucli build 0.0.2 (16.2.59.12)
+	
+libtbtfwu
+---------
+    - Added tbt_fwu_Controller_getPCIAddress() API
+    - Changed tbt_fwu_Controller_updateFW() signature to support progress reporting
+    - Added pkg-config file
+    - Various fixes for stabilization 
+	- libtbtfwu build 1.0.0 (16.2.59.7)
+
 6-December-2016:
 ===============
 tbtfwucli
@@ -21,7 +39,7 @@ Daemon
     - Added support for host FW update on Thunderbolt(TM) 3 DSL/JHL6000
       controllers (host only, no device FW update support yet)
     - License changed from GPL to BSD-style
-	- Daemon build 16.2.57.13
+    - Daemon build 16.2.57.13
 
 - All components work with kernel build 16.1.55.1 
 

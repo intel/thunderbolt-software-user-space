@@ -1,0 +1,9 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLDIR@
+
+Name: @CMAKE_PROJECT_NAME@
+Description: Thunderbolt host FW update library
+Version: @LIBTBTFWU_VERSION@
+Libs: -L${libdir} -ltbtfwu
+Cflags: -I${includedir}

@@ -1,2 +1,9 @@
+Release 16.2.59:
+    - version 0.0.2
+    - Added getPCIAddress command to use the new library API tbt_fwu_Controller_getPCIAddress()
+    - Adapted to the modified signature of tbt_fwu_Controller_updateFW()
+    - Added printing of FW update progress status
+    - Fixed GitHub issue #7 - (Cosmetic) tbtfwucli help description isn't accurate
+
 Release 16.2.57:
     - Initial release (version 0.0.1)

@@ -2,7 +2,7 @@
  * Thunderbolt(TM) FW update library
  * This library is distributed under the following BSD-style license:
  *
- * Copyright(c) 2016 Intel Corporation.
+ * Copyright(c) 2016 - 2017 Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -137,9 +137,17 @@ public:
     * @param[in] image
     *   The FW image to which ot update the controller.
     *
+    * @param[in] progress_cb
+    *   An optional callback function to get progress report.
+    *
+    *  @param[in] user_data
+    *   Will be passed as parameter to progress_cb each time it is called.
+    *
     * @throws std::exception on any failure to update the firmware.
     */
-   uint32_t UpdateFirmware(const std::vector<uint8_t>& image);
+   uint32_t UpdateFirmware(const std::vector<uint8_t>& image,
+                           void (*progress_cb)(uint32_t percentage, void* user_data),
+                           void* user_data);
 
    /**
     * Fetch the major and minor NVM versions currently running on this

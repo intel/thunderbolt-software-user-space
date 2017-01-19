@@ -2,7 +2,7 @@
  * Thunderbolt(TM) FW update library
  * This library is distributed under the following BSD-style license:
  *
- * Copyright(c) 2016 Intel Corporation.
+ * Copyright(c) 2016 - 2017 Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -73,6 +73,25 @@ struct tbt_fwu_Controller;
 extern int tbt_fwu_Controller_getID(struct tbt_fwu_Controller* pController,
                                     char* str,
                                     size_t* str_size);
+
+/**
+ * Find the PCI address (Bus:Device:Function) of the given controller.  The
+ * returned address is formatted as (bus << 8 | device << 3 | function)
+ *
+ * \param[in] pController
+ *   A controller structure previously returned by a call to
+ *   tbt_fwu_getControllerList().
+ *
+ * \param[out] address
+ *   Pointer to space at which we should store the B:D:F value.
+ *
+ * \return
+ *   TBT_OK on success, or one of the standard error codes defined in
+ * tbt_fwu_err.h.
+ */
+extern int
+tbt_fwu_Controller_getPCIAddress(struct tbt_fwu_Controller* pController,
+                                 uint16_t* address);
 
 /**
  * Fetch the model ID on the given controller.  The model ID
@@ -201,13 +220,26 @@ tbt_fwu_Controller_validateFWImage(struct tbt_fwu_Controller* pController,
  * \param[in] image_size
  *   Number of bytes pointed to by image.
  *
+ * \param[in] progress_cb
+ *  Optional.  A callback function for getting progress reporting.  This
+ *  function is called at most once for each of the percentages and passes as
+ *  another parameter the user_data passed in.  NULL can be passed here if the
+ *  user doesn't want the progress report updates.
+ *
+ * \param[in] user_data
+ *  Optional.  Passed as-is as the second parameter each time progress_cb is
+ *  called.
+ *
  * \return
  *   TBT_OK if the update was successful, or one of the standard error codes
  *   defined in tbt_fwu_err.h.
  */
 extern int tbt_fwu_Controller_updateFW(struct tbt_fwu_Controller* pController,
                                        const uint8_t* image,
-                                       size_t image_size);
+                                       size_t image_size,
+                                       void (*progress_cb)(uint32_t percentage,
+                                                           void* user_data),
+                                       void* user_data);
 
 #ifdef __cplusplus
 } /* extern "C" */
