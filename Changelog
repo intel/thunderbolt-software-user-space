@@ -8,7 +8,7 @@ tbtfwucli
     - Adapted to the modified signature of tbt_fwu_Controller_updateFW()
     - Added printing of FW update progress status
     - Fixed GitHub issue #7 - (Cosmetic) tbtfwucli help description isn't accurate
-    - tbtfwucli build 0.0.2 (16.2.59.12)
+    - tbtfwucli version 0.0.2 (build 16.2.59.12)
 	
 libtbtfwu
 ---------
@@ -16,7 +16,7 @@ libtbtfwu
     - Changed tbt_fwu_Controller_updateFW() signature to support progress reporting
     - Added pkg-config file
     - Various fixes for stabilization 
-	- libtbtfwu build 1.0.0 (16.2.59.7)
+    - libtbtfwu version 1.0.0 (build 16.2.59.7)
 
 6-December-2016:
 ===============
@@ -25,14 +25,14 @@ tbtfwucli
     - Initial release introducing FW update CLI sample for FW update 
 	  on Thunderbolt(TM) 3 DSL/JHL6000 controllers (host only, 
 	  no device FW update support yet)
-    - tbtfwucli build 0.0.1 (16.2.57.22)
+    - tbtfwucli version 0.0.1 (build 16.2.57.22)
 	
 libtbtfwu
 ---------
     - Initial release introducing FW update shared library for FW update 
 	  on Thunderbolt(TM) 3 DSL/JHL6000 controllers (host only, 
 	  no device FW update support yet)
-    - libtbtfwu build 0.9.0 (16.2.57.13)
+    - libtbtfwu version 0.9.0 (build 16.2.57.13)
 
 Daemon
 ------
