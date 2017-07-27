@@ -1,0 +1,134 @@
+#!/bin/bash
+
+################################################################################
+# Thunderbolt(TM) tbtacl tool
+# This code is distributed under the following BSD-style license:
+#
+# Copyright(c) 2017 Intel Corporation.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+################################################################################
+
+log="logger -t tbtacl $$:"
+$log args: $*
+
+acltree=/var/lib/thunderbolt/acl
+
+action=$1
+device=/sys$2
+
+debug() {
+	$log ${FUNCNAME[1]}\(${BASH_LINENO[0]}\): $*
+}
+
+die() {
+	debug $*
+	exit 1
+}
+
+# The main function to authorize a specific device. The parameter it expects is
+# the full sysfs path to the device. Then, if the device is found in ACL, it
+# authorizes it.
+authorize() {
+
+	# TOCTOU protection: chdir so if an attacker replaces the device between
+	# the read of unique_id and the write of authorized, the write will fail
+	cd $1 || { debug "can't access" $1 ; return 1 ; }
+
+	$log authorizing $1
+
+	uuid=$( cat unique_id )
+	[ -n "$uuid" ] || { debug -p err no UUID; return 1 ; } # Exit if UUID read failed
+
+	[ -e $acltree/$uuid ] || { debug not in ACL ; return 1 ; } # Exit if UUID isn't in ACL
+
+	if [ $sl -eq 2 ]; then
+		# Exit if device doesn't support SL2 or key is empty
+		[ -e key ] || { debug "device doesn't support SL2"; return 1 ; }
+		[ ! -e $acltree/$uuid/key ]|| { debug no key found ; return 1 ; }
+
+		cat $acltree/$uuid/key > key
+		$log key found
+	fi
+
+	echo $sl > authorized
+	err=$?
+	errstr=$( errno $err | cut -d' ' -f1 )
+
+	$log authorization result: $err $errstr
+
+	case "$errstr" in
+		ENOKEY|EKEYREJECTED)
+			rm -f $acltree/$uuid/key
+			debug invalid key removed, reapprove
+			udevadm trigger -c add $1 # Not needed if GUI watchs $acltree/$uuid/key
+			;;
+	esac
+}
+
+
+# Find the domain and extract the current SL
+domain=$device
+while [ -n "$domain" -a $domain != '/' ]; do
+	basename $domain | grep -Fq "domain" && break
+	domain=$( dirname $domain )
+done
+
+sl=$( cat $domain/security )
+case "$sl" in
+	user)	sl=1
+		;;
+
+	secure)	sl=2
+		;;
+
+	*)	die SL is $sl, leaving...
+		;;
+esac
+
+
+case "$action" in
+	# New device attached, go to authorize it
+	add)	authorize $device
+		;;
+
+	# The device got authorized, let's try to authorize again the devices
+	# behind it
+	change)	list=$device/*/authorized
+		# Stop if no substitution was done (no relevant childs found)
+		echo $list | grep -Fvq '*' || die no childs found
+
+		for i in $list ; do
+			i=$( dirname $i )
+			[ -e $i/uevent ] || continue
+			if grep -Fxq 'DEVTYPE=thunderbolt_device' $i/uevent; then
+				authorize $i
+			fi
+		done
+		;;
+
+	*)	die unhandled action: $action
+		;;
+esac

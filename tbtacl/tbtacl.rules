@@ -1,0 +1,3 @@
+# Thunderbolt udev rules for ACL (device auto approval)
+SUBSYSTEM=="thunderbolt" ENV{DEVTYPE}=="thunderbolt_device" ACTION=="add"    ATTR{authorized}=="0" RUN+="tbtacl add    $devpath"
+SUBSYSTEM=="thunderbolt" ENV{DEVTYPE}=="thunderbolt_device" ACTION=="change" ATTR{authorized}=="1" RUN+="tbtacl change $devpath"

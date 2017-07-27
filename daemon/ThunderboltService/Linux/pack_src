@@ -1,9 +1,0 @@
-sed -i 's/15.2.28.0/'"$BUILD_NUMBER"'-source/' version.h
-cd ../..
-[ -d thunderbolt_src ] && rm -r thunderbolt_src
-mkdir thunderbolt_src
-mv ThunderboltService/Linux/AUTHORS ThunderboltService/Linux/ChangeLog ThunderboltService/Linux/COPYING ThunderboltService/Linux/INSTALL ThunderboltService/Linux/README .
-cp -r External shared ThunderboltService AUTHORS ChangeLog COPYING INSTALL README thunderbolt_src
-cd thunderbolt_src
-tar -cvzf ../thunderbolt_src.tar.gz *
-
