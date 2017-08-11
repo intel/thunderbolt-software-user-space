@@ -35,6 +35,8 @@
 
 #include <fcntl.h> // for O_RDONLY, O_WRONLY
 
+#include <boost/filesystem.hpp>
+
 namespace tbtadm
 {
 /**
@@ -73,7 +75,29 @@ public:
      * @param filename  Name/path of the file to open
      * @param mode      File open mode
      */
-    File(const std::string& filename, Mode mode);
+    File(const boost::filesystem::path& path,
+         Mode mode,
+         int flags = 0,
+         int perm  = 0);
+
+    /**
+     * @brief Open the file
+     *
+     * @param filename  Name/path of the file to open
+     * @param mode      File open mode
+     */
+    File(const std::string& filename, Mode mode, int flags = 0, int perm = 0);
+
+    /**
+     * @brief Open the file
+     *
+     * @param filename  Name/path of the file to open
+     * @param mode      File open mode
+     *
+     * This overloading exists so call with a string literal wouldn't be
+     * ambiguous
+     */
+    File(const char* filename, Mode mode, int flags = 0, int perm = 0);
 
     /**
      * @brief close the file
@@ -106,6 +130,12 @@ private:
 
     int m_fd = ERROR;
 };
+
+inline File& operator<<(File& file, const std::string& t)
+{
+    file.write(t);
+    return file;
+}
 
 template <typename T>
 File& operator<<(File& file, const T& t)

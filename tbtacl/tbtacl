@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 ################################################################################
 # Thunderbolt(TM) tbtacl tool
@@ -35,12 +35,13 @@ log="logger -t tbtacl $$:"
 $log args: $*
 
 acltree=/var/lib/thunderbolt/acl
+pyscript=/lib/udev/write.py
 
 action=$1
 device=/sys$2
 
 debug() {
-	$log ${FUNCNAME[1]}\(${BASH_LINENO[0]}\): $*
+	$log $*
 }
 
 die() {
@@ -67,23 +68,25 @@ authorize() {
 	if [ $sl -eq 2 ]; then
 		# Exit if device doesn't support SL2 or key is empty
 		[ -e key ] || { debug "device doesn't support SL2"; return 1 ; }
-		[ ! -e $acltree/$uuid/key ]|| { debug no key found ; return 1 ; }
+		[ -e $acltree/$uuid/key ] || { debug no key found ; return 1 ; }
 
 		cat $acltree/$uuid/key > key
 		$log key found
 	fi
 
-	echo $sl > authorized
+	$pyscript $sl authorized
 	err=$?
-	errstr=$( errno $err | cut -d' ' -f1 )
+	if $( which errno ); then
+		errstr=$( errno $err | cut -d' ' -f1 )
+	fi
 
 	$log authorization result: $err $errstr
 
-	case "$errstr" in
-		ENOKEY|EKEYREJECTED)
+	case "$err" in
+		126|129) # ENOKEY or EKEYREJECTED
 			rm -f $acltree/$uuid/key
 			debug invalid key removed, reapprove
-			udevadm trigger -c add $1 # Not needed if GUI watchs $acltree/$uuid/key
+			udevadm trigger -c change $1 # Not needed if GUI watchs $acltree/$uuid/key
 			;;
 	esac
 }
@@ -91,7 +94,7 @@ authorize() {
 
 # Find the domain and extract the current SL
 domain=$device
-while [ -n "$domain" -a $domain != '/' ]; do
+while [ -n "$domain" ] && [ $domain != '/' ]; do
 	basename $domain | grep -Fq "domain" && break
 	domain=$( dirname $domain )
 done

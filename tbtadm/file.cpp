@@ -35,6 +35,8 @@
 #include <system_error>
 #include <unistd.h>
 
+namespace fs = boost::filesystem;
+
 namespace
 {
 [[noreturn]] void throwErrno()
@@ -43,8 +45,19 @@ namespace
 }
 } // namespace
 
-tbtadm::File::File(const std::string& filename, Mode mode)
-    : m_fd(::open(filename.c_str(), static_cast<int>(mode)))
+tbtadm::File::File(const fs::path& path, Mode mode, int flags, int perm)
+    : File(path.string(), mode, flags, perm)
+{
+}
+
+tbtadm::File::File(const std::string& filename, Mode mode, int flags, int perm)
+    : File(filename.c_str(), mode, flags, perm)
+{
+}
+
+tbtadm::File::File(const char* filename, Mode mode, int flags, int perm)
+    : m_fd(perm ? ::open(filename, static_cast<int>(mode) | flags, perm)
+                : ::open(filename, static_cast<int>(mode) | flags))
 {
     if (m_fd == ERROR)
     {
@@ -71,6 +84,7 @@ tbtadm::File& tbtadm::File::operator=(tbtadm::File&& other) noexcept
 
 void tbtadm::File::write(const std::string& value)
 {
+    errno    = 0;
     auto ret = ::write(m_fd, value.data(), value.size());
     if (ret == ERROR || (!ret && errno))
     {
@@ -81,6 +95,7 @@ void tbtadm::File::write(const std::string& value)
 std::string tbtadm::File::read()
 {
     std::string content;
+    errno = 0;
     while (true)
     {
         char c;

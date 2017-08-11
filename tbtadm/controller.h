@@ -32,6 +32,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <map>
 
 #include <boost/filesystem.hpp>
 
@@ -43,10 +44,29 @@ namespace tbtadm
 class Controller
 {
 public:
+    static constexpr int UnkownSL = -1;
+
     Controller(int argc, char* argv[], std::ostream& out, std::ostream& err);
     void run();
 
 private:
+    /// Prints all connected devices
+    void devices();
+
+    /// Prints all connected devices in a tree
+    void topology();
+
+    /// Add to tree all devices under a given path
+    struct ControllerInTree;
+    void createTree(ControllerInTree& controller, const fs::path& path);
+
+    void printTree(std::string& indentation,
+                   const std::map<std::string, ControllerInTree>& map);
+
+    void printDetails(bool last,
+                      std::string& indentation,
+                      const std::vector<std::string>& details);
+
     /// Goes over all domains and approves all the connected devices
     void approveAll();
 
@@ -59,8 +79,11 @@ private:
     /// Adds to ACL the device from current PWD
     void addToACL();
 
+    /// Prints ACL
+    void acl();
+
     /// Removes the given UUID from ACL
-    void remove(const std::string& uuid);
+    void remove(std::string uuid);
 
     /// Clears the ACL
     void removeAll();
@@ -69,6 +92,7 @@ private:
     char** m_argv;
     std::ostream& m_out;
     std::ostream& m_err;
+    int m_sl = UnkownSL;
 };
 
 } // namespace tbtadm
