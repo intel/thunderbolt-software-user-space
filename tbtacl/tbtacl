@@ -35,7 +35,7 @@ log="logger -t tbtacl $$:"
 $log args: $*
 
 acltree=/var/lib/thunderbolt/acl
-pyscript=/lib/udev/write.py
+write_helper=/lib/udev/tbtacl-write
 
 action=$1
 device=/sys$2
@@ -74,7 +74,7 @@ authorize() {
 		$log key found
 	fi
 
-	$pyscript $sl authorized
+	$write_helper $sl authorized
 	err=$?
 	if $( which errno ); then
 		errstr=$( errno $err | cut -d' ' -f1 )
