@@ -13,12 +13,6 @@ data (PCIe, USB3.1) and video (DisplayPort) on a single cable connection
 that can daisy-chain up to six devices.
 
 
-## Warning
-This is an engineering drop. The build definitions are still in preliminary
-state, documentation is not in its best state, the error reporting can be
-improved and the code can be nicer.
-
-
 ## Features
 The user-space components implement device approval support:
 1. Easier interaction with the kernel module for approving connected devices.
@@ -47,6 +41,9 @@ module.
 
 
 ## Changelog
+### v0.9
+- First official release
+
 ### Eng. drop 2
 - tbtadm: more commands added (devices, topology, acl)
 - tbtadm: 'remove' accepts route-string, not only UUID
@@ -61,9 +58,13 @@ module.
 - tbtadm should use a helper + polkit for better permission handling
 - install script is missing
 - man page is missing
+- error reporting can be improved
 
 
 ## Resolved Issues
+### v0.9
+- tbtacl: use C++ instead of Python for write action (GitHub issue #19)
+
 ### Eng. drop 2
 - tbtacl: fixed SL2 handling
 - tbtacl: don't assume errno(1) is installed
