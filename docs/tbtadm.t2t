@@ -1,0 +1,64 @@
+tbtadm
+Yehezkel Bernat <yehezkel.bernat@intel.com>
+%%mtime(%m/%d/%Y)
+
+%!encoding: UTF-8
+
+
+= NAME =
+tbtadm - Thunderbolt(tm) management tool
+
+
+= SYNOPSIS =
+
+**tbtadm**
+
+**tbtadm devices**
+
+**tbtadm topology**
+
+**tbtadm approve-all**
+
+**tbtadm acl**
+
+**tbtadm remove** <uuid | route-string>
+
+**tbtadm remove-all**
+
+
+= DESCRIPTION =
+**tbtadm** provides convenient way to interact with **Thunderbolt** kernel
+module, approve the connection of Thunderbolt devices, handle the ACL for
+auto-connecting devices and more.
+Running it with no argument, it prints all the available commands.
+
+
+= OPTIONS =
+
+: **devices**
+Print a list of all the currently connected Thunderbolt devices in the following
+format:
+```
+Route-string    Vendor    Device name    Authorized?    In ACL?
+```
+
+: **topology**
+Print all the currently connected Thudnerbolt devices in a tree, starting with
+the controller itself, resembling the device connection topology.
+
+: **approve-all**
+Approve all currently connected Thunderbolt devices that aren't authorized yet
+and add them to ACL.
+
+: **acl**
+Print the ACL content in the following format:
+```
+UUID    Vendor    Device name    Currently connected?
+```
+
+: **remove** <uuid | route-string>
+Remove ACL entry. The argument selects the device to be removed by its UUID or
+(if it's currently connected) by route-string.
+
+: **remove-all**
+Clear the ACL, removing all the entries.

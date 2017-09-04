@@ -47,18 +47,20 @@ Build dependencies are:
 - CMake
 - boost.program_options
 - boost.filesystem
-You also need a c++ compiler with C++14 support.
+- txt2tags (for generating the man page)
+You also need a c++ compiler with C++14 support and gzip.
 
 Tested with:
 - g++ - v5.4 and v7.1.1
 - CMake - v3.5.1 and v3.9.1
 - boost - v1.58 and v1.63
+- txt2tags - v2.5 and v2.6
 
 For example, on Ubuntu you can install the dependencies with the following
 command:
-`apt install cmake libboost-filesystem-dev libboost-program-options-dev`
+`apt install cmake libboost-filesystem-dev libboost-program-options-dev txt2tags`
 On Fedora, use this:
-`dnf install cmake boost-devel`
+`dnf install cmake boost-devel txt2tags`
 
 ### Building
 Use the CMakeLists.txt file found in the root directory to build the project.
@@ -85,6 +87,7 @@ Installation can be done in one of 2 options:
 ### v0.9.1
 - Build definition updated to support configuration, installation and packaging
 - Documentation update (GitHub issue #23)
+- man page added (GitHub issue #9)
 
 ### v0.9
 - First official release
@@ -101,7 +104,6 @@ Installation can be done in one of 2 options:
 
 ## Known Issues
 - tbtadm should use a helper + polkit for better permission handling
-- man page is missing
 - error reporting can be improved
 
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(tbt-userspace)
+project(thunderbolt-user-space)
 
 set(VERSION "0.9.1")
 
@@ -15,6 +15,7 @@ set(TBT_CXXFLAGS ${CXX_FLAGS} -Wall -Wextra)
 add_subdirectory(common)
 add_subdirectory(tbtacl)
 add_subdirectory(tbtadm)
+add_subdirectory(docs)
 
 set(PACKAGE_SUMMARY "User-space components for handling Thunderbolt controller and devices")
 
@@ -40,6 +41,8 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/lib"
                                                   "/usr"
                                                   "/usr/share"
                                                   "/usr/share/doc"
+                                                  "/usr/share/man"
+                                                  "/usr/share/man/man1"
                                                   "/usr/bin")
 
 # DEB specific
@@ -47,7 +50,7 @@ file(READ "${CPACK_PACKAGE_DESCRIPTION_FILE}" PACKAGE_DESCRIPTION)
 set(CPACK_DEBIAN_PACKAGE_DESCRIPTION ${PACKAGE_DESCRIPTION})
 
 # Main customization points
-set(CPACK_PACKAGE_NAME "thunderbolt-user-space")
+set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_PACKAGE_VERSION ${VERSION})
 set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}")
