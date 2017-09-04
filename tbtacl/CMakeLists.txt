@@ -4,5 +4,5 @@ add_executable(${PROJECT_NAME} "write.cpp")
 target_link_libraries(${PROJECT_NAME} PRIVATE common)
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-	$<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>)
+	$<$<COMPILE_LANGUAGE:CXX>:${TBT_CXXFLAGS}>)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)

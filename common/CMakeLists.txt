@@ -9,5 +9,5 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-	$<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>)
+	$<$<COMPILE_LANGUAGE:CXX>:${TBT_CXXFLAGS}>)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)
