@@ -35,7 +35,7 @@ log="logger -t tbtacl $$:"
 $log args: $*
 
 acltree=/var/lib/thunderbolt/acl
-write_helper=/lib/udev/tbtacl-write
+write_helper=@UDEV_BIN_DIR@/tbtacl-write
 
 action=$1
 device=/sys$2

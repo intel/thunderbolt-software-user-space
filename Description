@@ -1,0 +1,12 @@
+User-space components for handling Thunderbolt controller and devices
+ Thunderbolt™ technology is a transformational high-speed, dual protocol
+ I/O that provides unmatched performance with up to 40Gbps bi-directional
+ transfer speeds. It provides flexibility and simplicity by supporting both
+ data (PCIe, USB3.1) and video (DisplayPort) on a single cable connection
+ that can daisy-chain up to six devices.
+ .
+ This package includes the user-space components for device approval support:
+ .
+ 1. Easier interaction with the kernel module for approving connected devices.
+ .
+ 2. ACL for auto-approving devices white-listed by the user.
