@@ -31,16 +31,61 @@ handling the ACL and more.
 
 ## Supported OSes
 - Ubuntu* 16.04 and 17.04
+- Fedora* 26
 
 
 ## Kernel/Daemon Compatibility
 The user-space components operate in coordination with the upstream Thunderbolt
-kernel driver (found in v4.13-rc1) to provide the Thunderbolt functionalities.
-These components are NOT compatible with the old out-of-tree Thunderbolt kernel
+kernel driver (found in v4.13) to provide the Thunderbolt functionalities. These
+components are NOT compatible with the old out-of-tree Thunderbolt kernel
 module.
 
 
+## Build instructions
+### Build dependencies
+Build dependencies are:
+- CMake
+- boost.program_options
+- boost.filesystem
+You also need a c++ compiler with C++14 support.
+
+Tested with:
+- g++ - v5.4 and v7.1.1
+- CMake - v3.5.1 and v3.9.1
+- boost - v1.58 and v1.63
+
+For example, on Ubuntu you can install the dependencies with the following
+command:
+`apt install cmake libboost-filesystem-dev libboost-program-options-dev`
+On Fedora, use this:
+`dnf install cmake boost-devel`
+
+### Building
+Use the CMakeLists.txt file found in the root directory to build the project.
+For example (run it in the directory holding the code):
+1. `mkdir build`
+2. `cd build`
+3. `cmake .. -DCMAKE_BUILD_TYPE=Release`
+4. `cmake --build .`
+
+On step 3, `CMAKE_INSTALL_PREFIX`, `UDEV_BIN_DIR` and `UDEV_RULES_DIR` variables
+can be used for changing the default installation location, e.g. to install
+`tbtadm` under `/usr/bin` instead of the default `/usr/local/bin` run:
+`cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr`
+
+### Installation
+Installation can be done in one of 2 options:
+- From build directory, run `cmake --build . --target install`.
+- From build directory, run `cpack -G RPM` to create an RPM package or
+  `cpack -G DEB` to create a DEB package. Then, use your distro package manager
+  to install the resulted package.
+
+
 ## Changelog
+### v0.9.1
+- Build definition updated to support configuration, installation and packaging
+- Documentation update (GitHub issue #23)
+
 ### v0.9
 - First official release
 
@@ -56,12 +101,16 @@ module.
 
 ## Known Issues
 - tbtadm should use a helper + polkit for better permission handling
-- install script is missing
 - man page is missing
 - error reporting can be improved
 
 
 ## Resolved Issues
+### v0.9.1
+- Fixes for documentation (GitHub issue #20)
+- Build definition updated (GitHub issues #21, #22)
+- tbtadm: Compilation warnings (GitHub issue #22)
+
 ### v0.9
 - tbtacl: use C++ instead of Python for write action (GitHub issue #19)
 
