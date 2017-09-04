@@ -228,7 +228,7 @@ void tbtadm::Controller::devices()
             continue;
         }
 
-        ::chdir(dir.path().c_str());
+        chdir(dir.path());
         auto authorized = [] {
             return stoi(readAndTrim(authorizedFilename)) ? "authorized"
                                                          : "non-authorized";
@@ -431,7 +431,7 @@ void tbtadm::Controller::approveAll(const fs::path& dir)
 // TODO: move to tbtadm-helper
 void tbtadm::Controller::approve(const fs::path& dir) try
 {
-    ::chdir(dir.c_str());
+    chdir(dir);
     m_out << "Authorizing " << dir << '\n';
 
     File authorized(authorizedFilename, File::Mode::Read);

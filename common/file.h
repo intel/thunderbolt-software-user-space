@@ -124,12 +124,15 @@ public:
      */
     std::string read();
 
+    static const int ERROR = -1;
+
 private:
     void close();
-    static const int ERROR = -1;
 
     int m_fd = ERROR;
 };
+
+void chdir(const boost::filesystem::path& dir);
 
 inline File& operator<<(File& file, const std::string& t)
 {

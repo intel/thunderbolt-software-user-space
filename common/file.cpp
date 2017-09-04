@@ -125,3 +125,11 @@ void tbtadm::File::close()
         m_fd = ERROR;
     }
 }
+
+void tbtadm::chdir(const fs::path&dir)
+{
+    if (::chdir(dir.c_str()) == File::ERROR)
+    {
+        throwErrno();
+    }
+}
