@@ -78,7 +78,7 @@ module.
 
 ## Information
 The source for this code:
-- https://github.com/01org/thunderbolt-software-user-space/tree/upstream-driver
+- https://github.com/01org/thunderbolt-software-user-space
 
 Mailing list:
 - thunderbolt-software@lists.01.org
