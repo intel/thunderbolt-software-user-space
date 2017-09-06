@@ -1,0 +1,28 @@
+_tbtadm()
+{
+    local cur prev opts acl devices
+
+    acl=/var/lib/thunderbolt/acl
+    devices=/sys/bus/thunderbolt/devices
+
+    COMPREPLY=()
+    cur="$2"
+    prev="$3"
+    opts="devices topology approve-all acl remove remove-all"
+
+    case "$prev" in
+    remove)
+        local uuids routestrings
+        uuids="$( [ -d ${acl} ] && ls ${acl})"
+        routestrings="$( [ -d ${devices} ] && ls ${devices} | grep -v domain | fgrep -v . | grep -v [0-9]-0)"
+        COMPREPLY=( $(compgen -W "${uuids} ${routestrings}" -- "$cur") )
+        return 0
+        ;;
+    esac;
+
+    COMPREPLY=( $(compgen -W "${opts}" -- "$cur") )
+
+    return 0
+
+}
+complete -F _tbtadm tbtadm

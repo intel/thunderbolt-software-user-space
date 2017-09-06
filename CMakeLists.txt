@@ -39,11 +39,13 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/lib"
                                                   "/lib/udev"
                                                   "/lib/udev/rules.d"
                                                   "/usr"
+                                                  "/usr/bin"
                                                   "/usr/share"
+                                                  "/usr/share/bash-completion"
+                                                  "/usr/share/bash-completion/completions"
                                                   "/usr/share/doc"
                                                   "/usr/share/man"
-                                                  "/usr/share/man/man1"
-                                                  "/usr/bin")
+                                                  "/usr/share/man/man1")
 
 # DEB specific
 file(READ "${CPACK_PACKAGE_DESCRIPTION_FILE}" PACKAGE_DESCRIPTION)
