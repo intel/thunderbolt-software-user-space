@@ -87,6 +87,39 @@ std::string readAndTrim(const fs::path& path)
     return boost::algorithm::trim_copy(read(path));
 }
 
+/**
+ * Return the content of the file from given path or "Unknown" + type if empty
+ *
+ * @param path  path to file to read from
+ * @param type  string to return if file is empty, prefixed with "Unknown"
+ */
+std::string readName(const fs::path& path, const std::string& type)
+{
+    try
+    {
+        auto res = readAndTrim(path);
+        if (!res.empty())
+        {
+            return res;
+        }
+    }
+    catch (std::runtime_error&)
+    {
+        // assuming this is from an empty file
+    }
+    return "Unknown " + type;
+}
+
+std::string readVendor(const fs::path& path)
+{
+    return readName(path, "vendor");
+}
+
+std::string readDevice(const fs::path& path)
+{
+    return readName(path, "device");
+}
+
 bool findUeventAttr(const fs::path& path, const std::string& attribute)
 {
     const auto ueventFile = path / "uevent";
@@ -249,8 +282,8 @@ void tbtadm::Controller::devices()
 
         // TODO: better formatting
         const auto routeString = dir.path().filename().string();
-        m_out << routeString << '\t' << readAndTrim(vendorFilename) << '\t'
-              << readAndTrim(deviceFilename) << '\t' << authorized() << '\t'
+        m_out << routeString << '\t' << readVendor(vendorFilename) << '\t'
+              << readDevice(deviceFilename) << '\t' << authorized() << '\t'
               << inACL() << '\n';
     }
 }
@@ -284,8 +317,9 @@ void tbtadm::Controller::topology()
             m_sl          = slMap.find(readAndTrim(security))->second.num;
             std::vector<std::string> desc;
             desc.emplace_back("Controller "s + num + '\n');
-            desc.emplace_back("Name: " + readAndTrim(p / deviceFilename) + ", "
-                              + read(p / vendorFilename));
+            desc.emplace_back("Name: " + readDevice(p / deviceFilename) + ", "
+                              + readVendor(p / vendorFilename)
+                              + '\n');
             desc.emplace_back("Security level: "
                               + slMap.find(readAndTrim(security))->second.desc
                               + '\n');
@@ -341,8 +375,9 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
 
         auto routeString = p.filename().string();
         std::vector<std::string> desc;
-        desc.emplace_back(readAndTrim(p / deviceFilename) + ", "
-                          + read(p / vendorFilename));
+        desc.emplace_back(readDevice(p / deviceFilename) + ", "
+                          + readVendor(p / vendorFilename)
+                          + "\n");
         desc.emplace_back("Route-string: " + routeString + "\n");
         desc.emplace_back("Authorized: " + authorized(p) + "\n");
         desc.emplace_back("In ACL: " + inACL(p) + "\n");
@@ -543,8 +578,8 @@ void tbtadm::Controller::acl()
         if (m_sl != 2 || fs::exists(p / keyFilename))
         {
             const auto uuid = p.filename().string();
-            m_out << uuid << '\t' << readAndTrim(p / vendorFilename) << '\t'
-                  << readAndTrim(p / deviceFilename) << '\t' << connected(uuid)
+            m_out << uuid << '\t' << readVendor(p / vendorFilename) << '\t'
+                  << readDevice(p / deviceFilename) << '\t' << connected(uuid)
                   << '\n';
         }
         else
@@ -562,8 +597,8 @@ void tbtadm::Controller::acl()
             if (!fs::exists(p / keyFilename))
             {
                 const auto uuid = p.filename().string();
-                m_out << uuid << '\t' << readAndTrim(p / vendorFilename) << '\t'
-                      << readAndTrim(p / deviceFilename) << '\t'
+                m_out << uuid << '\t' << readVendor(p / vendorFilename) << '\t'
+                      << readDevice(p / deviceFilename) << '\t'
                       << connected(uuid) << '\n';
             }
         }
