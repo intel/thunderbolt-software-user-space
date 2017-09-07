@@ -13,8 +13,8 @@ _tbtadm()
     case "$prev" in
     remove)
         local uuids routestrings
-        uuids="$( [ -d ${acl} ] && ls ${acl})"
-        routestrings="$( [ -d ${devices} ] && ls ${devices} | grep -v domain | fgrep -v . | grep -v [0-9]-0)"
+        uuids="$( [ -d ${acl} ] && command ls ${acl})"
+        routestrings="$( [ -d ${devices} ] && command ls ${devices} | command grep -v domain | command grep -Fv . | command grep -v [0-9]-0)"
         COMPREPLY=( $(compgen -W "${uuids} ${routestrings}" -- "$cur") )
         return 0
         ;;
