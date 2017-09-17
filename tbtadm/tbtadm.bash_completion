@@ -8,17 +8,21 @@ _tbtadm()
     COMPREPLY=()
     cur="$2"
     command="${COMP_WORDS[1]}"
-    opts="devices topology approve-all acl remove remove-all"
+    opts="devices topology approve approve-all acl remove remove-all"
 
     case "$command" in
-    approve-all)
+    approve|remove)
+        local routestrings
+        routestrings="$( [ -d ${devices} ] && command ls ${devices} | command grep -v domain | command grep -Fv . | command grep -v [0-9]-0)"
+        COMPREPLY+=( $(compgen -W "${routestrings}" -- "$cur") )
+        ;;&
+    approve|approve-all)
         COMPREPLY+=( $(compgen -W "--once" -- "$cur") )
         ;;
     remove)
-        local uuids routestrings
+        local uuids
         uuids="$( [ -d ${acl} ] && command ls ${acl})"
-        routestrings="$( [ -d ${devices} ] && command ls ${devices} | command grep -v domain | command grep -Fv . | command grep -v [0-9]-0)"
-        COMPREPLY=( $(compgen -W "${uuids} ${routestrings}" -- "$cur") )
+        COMPREPLY+=( $(compgen -W "${uuids}" -- "$cur") )
         ;;
     *)
         if [[ ${COMP_CWORD} = 1 ]]; then

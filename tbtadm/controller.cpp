@@ -67,6 +67,7 @@ const std::string deviceDevtype   = "DEVTYPE=thunderbolt_device";
 // TODO: replace with boost.program_options
 const std::string opt_devices     = "devices";
 const std::string opt_topology    = "topology";
+const std::string opt_approve     = "approve";
 const std::string opt_approve_all = "approve-all";
 const std::string opt_acl         = "acl";
 const std::string opt_remove      = "remove";
@@ -216,6 +217,18 @@ void tbtadm::Controller::run()
         {
             return topology();
         }
+        if (m_argv[1] == opt_approve)
+        {
+            if (m_argc == 3 || m_argc == 4)
+            {
+                if (m_argv[2] == opt_once_flag)
+                {
+                    m_once = true;
+                }
+                m_sl = findSL();
+                return approve(sysfsDevicesPath / m_argv[m_argc - 1]);
+            }
+        }
         if (m_argv[1] == opt_approve_all)
         {
             if (m_argc == 3 && m_argv[2] == opt_once_flag)
@@ -244,6 +257,7 @@ void tbtadm::Controller::run()
     // TODO: help
     const std::string sep = " | ";
     m_out << "Usage: " << opt_devices << sep << opt_topology << sep
+          << opt_approve << '[' << opt_once_flag << ']' << sep
           << opt_approve_all << '[' << opt_once_flag << ']' << sep << opt_acl
           << sep << opt_remove << " <uuid>|<route-string>" << sep
           << opt_remove_all << "\n";

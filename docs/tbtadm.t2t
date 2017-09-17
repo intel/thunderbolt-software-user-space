@@ -17,6 +17,8 @@ tbtadm - Thunderbolt(tm) management tool
 
 **tbtadm topology**
 
+**tbtadm approve** [--once] <route-string>
+
 **tbtadm approve-all** [--once]
 
 **tbtadm acl**
@@ -45,6 +47,10 @@ Route-string    Vendor    Device name    Authorized?    In ACL?
 : **topology**
 Print all the currently connected Thudnerbolt devices in a tree, starting with
 the controller itself, resembling the device connection topology.
+
+: **approve** [--once] <route-string>
+If the selected Thunderbolt device isn't authorized, approve it and (if ``--once``
+wasn't specified) add it to ACL.
 
 : **approve-all** [--once]
 Approve all currently connected Thunderbolt devices that aren't authorized yet

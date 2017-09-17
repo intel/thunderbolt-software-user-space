@@ -92,7 +92,7 @@ private:
     char** m_argv;
     std::ostream& m_out;
     std::ostream& m_err;
-    int m_sl = UnkownSL;
+    int m_sl = UnkownSL; // FIXME: Consider moving to a local var
     bool m_once = false;
 };
 
