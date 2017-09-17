@@ -93,6 +93,7 @@ private:
     std::ostream& m_out;
     std::ostream& m_err;
     int m_sl = UnkownSL;
+    bool m_once = false;
 };
 
 } // namespace tbtadm

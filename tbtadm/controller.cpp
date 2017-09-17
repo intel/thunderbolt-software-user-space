@@ -71,6 +71,7 @@ const std::string opt_approve_all = "approve-all";
 const std::string opt_acl         = "acl";
 const std::string opt_remove      = "remove";
 const std::string opt_remove_all  = "remove-all";
+const std::string opt_once_flag   = "--once";
 
 const std::string indent     = "|   ";
 const std::string indentLast = "    ";
@@ -217,6 +218,10 @@ void tbtadm::Controller::run()
         }
         if (m_argv[1] == opt_approve_all)
         {
+            if (m_argc == 3 && m_argv[2] == opt_once_flag)
+            {
+                m_once = true;
+            }
             return approveAll();
         }
         if (m_argv[1] == opt_acl)
@@ -239,8 +244,9 @@ void tbtadm::Controller::run()
     // TODO: help
     const std::string sep = " | ";
     m_out << "Usage: " << opt_devices << sep << opt_topology << sep
-          << opt_approve_all << sep << opt_acl << sep << opt_remove
-          << " <uuid>|<route-string>" << sep << opt_remove_all << "\n";
+          << opt_approve_all << '[' << opt_once_flag << ']' << sep << opt_acl
+          << sep << opt_remove << " <uuid>|<route-string>" << sep
+          << opt_remove_all << "\n";
     throw std::runtime_error("Wrong usage");
 }
 
@@ -476,7 +482,10 @@ void tbtadm::Controller::approve(const fs::path& dir) try
         return;
     }
 
-    addToACL();
+    if (!m_once)
+    {
+        addToACL();
+    }
 
     std::ostringstream keyStream;
     if (m_sl == 2)
@@ -496,7 +505,7 @@ void tbtadm::Controller::approve(const fs::path& dir) try
     authorized << 1;
 
     m_out << "Authorized\n";
-    if (m_sl == 2)
+    if (m_sl == 2 && !m_once)
     {
         File keyACL(acltree / readAndTrim(uniqueIDFilename) / keyFilename,
                     File::Mode::Write,
