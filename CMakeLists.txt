@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(thunderbolt-user-space)
 
-set(VERSION "0.9.1")
+set(VERSION "0.9.2")
 
 include(GNUInstallDirs)
 

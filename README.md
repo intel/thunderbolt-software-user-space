@@ -32,6 +32,7 @@ handling the ACL and more.
 ## Supported OSes
 - Ubuntu* 16.04 and 17.04
 - Fedora* 26
+- Clear Linux*
 
 
 ## Kernel/Daemon Compatibility
@@ -48,6 +49,7 @@ Build dependencies are:
 - boost.program_options
 - boost.filesystem
 - txt2tags (for generating the man page)
+
 You also need a c++ compiler with C++14 support and gzip.
 
 Tested with:
@@ -57,9 +59,9 @@ Tested with:
 - txt2tags - v2.5 and v2.6
 
 For example, on Ubuntu you can install the dependencies with the following
-command:
-`apt install cmake libboost-filesystem-dev libboost-program-options-dev txt2tags`
-On Fedora, use this:
+command:  
+`apt install cmake libboost-filesystem-dev libboost-program-options-dev txt2tags`  
+On Fedora, use this:  
 `dnf install cmake boost-devel txt2tags`
 
 ### Building
@@ -72,7 +74,7 @@ For example (run it in the directory holding the code):
 
 On step 3, `CMAKE_INSTALL_PREFIX`, `UDEV_BIN_DIR` and `UDEV_RULES_DIR` variables
 can be used for changing the default installation location, e.g. to install
-`tbtadm` under `/usr/bin` instead of the default `/usr/local/bin` run:
+`tbtadm` under `/usr/bin` instead of the default `/usr/local/bin` run:  
 `cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr`
 
 ### Installation
@@ -84,6 +86,12 @@ Installation can be done in one of 2 options:
 
 
 ## Changelog
+### v0.9.2
+- tbtadm: added `--once` flag for `approve-all` command
+- tbtadm: `approve` command added
+- tbtadm: bash completion support added (GitHub issue #27)
+- tbtacl: udev dir config variable default values are taken from `pkg-config udev`
+
 ### v0.9.1
 - Build definition updated to support configuration, installation and packaging
 - Documentation update (GitHub issue #23)
@@ -105,9 +113,14 @@ Installation can be done in one of 2 options:
 ## Known Issues
 - tbtadm should use a helper + polkit for better permission handling
 - error reporting can be improved
+- bash completion rules are less strict about completions than what `tbtadm`
+  actually accepts
 
 
 ## Resolved Issues
+### v0.9.2
+- tbtadm: handle empty vendor/device name correctly (GitHub issue #25)
+
 ### v0.9.1
 - Fixes for documentation (GitHub issue #20)
 - Build definition updated (GitHub issues #21, #22)
