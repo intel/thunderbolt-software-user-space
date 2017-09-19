@@ -6,9 +6,12 @@ set(VERSION "0.9.1")
 
 include(GNUInstallDirs)
 
-set(UDEV_RULES_DIR "/lib/udev/rules.d" CACHE PATH "Install path for udev rules")
-set(UDEV_BIN_DIR   "/lib/udev"         CACHE PATH "Install path for udev-triggered executables")
-set(RULES_PREFIX   "60"                CACHE PATH "The numeric prefix for udev rules file")
+include(FindPkgConfig)
+pkg_get_variable(PKG_CONFIG_UDEV_DIR udev udevdir)
+
+set(UDEV_RULES_DIR "${PKG_CONFIG_UDEV_DIR}/rules.d" CACHE PATH "Install path for udev rules")
+set(UDEV_BIN_DIR   "${PKG_CONFIG_UDEV_DIR}"         CACHE PATH "Install path for udev-triggered executables")
+set(RULES_PREFIX   "60"                             CACHE PATH "The numeric prefix for udev rules file")
 
 set(TBT_CXXFLAGS ${CXX_FLAGS} -Wall -Wextra)
 
@@ -25,7 +28,7 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_STRIP_FILES ON)
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Description")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
-set(CPACK_GENERATOR "DEB")
+set(CPACK_GENERATOR "DEB;RPM")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PACKAGE_SUMMARY})
 set(CPACK_PACKAGE_RELEASE 1)
 set(CPACK_PACKAGE_CONTACT "Thunderbolt Software mailing list <thunderbolt-software@lists.01.org>")
@@ -35,17 +38,24 @@ set(CPACK_PACKAGING_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
 # RPM specific
 set(CPACK_PACKAGE_RELOCATABLE OFF)
 set(CPACK_RPM_PACKAGE_REQUIRES "boost-program-options, boost-filesystem")
-set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/lib"
-                                                  "/lib/udev"
-                                                  "/lib/udev/rules.d"
-                                                  "/usr"
-                                                  "/usr/bin"
-                                                  "/usr/share"
-                                                  "/usr/share/bash-completion"
-                                                  "/usr/share/bash-completion/completions"
-                                                  "/usr/share/doc"
-                                                  "/usr/share/man"
-                                                  "/usr/share/man/man1")
+
+function(ALL_ANCESTOR_DIRS result dir)
+    while(NOT dir STREQUAL "/")
+      list(APPEND LOCAL_LIST "${dir}")
+      get_filename_component(dir "${dir}/.." ABSOLUTE)
+    endwhile()
+    set(${result} "${LOCAL_LIST}" PARENT_SCOPE)
+endfunction()
+
+foreach(dir "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}"
+            "${UDEV_RULES_DIR}"
+            "${UDEV_BIN_DIR}"
+            "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1"
+            "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions")
+  ALL_ANCESTOR_DIRS(LIST_FOR_RPM "${dir}")
+  list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "${LIST_FOR_RPM}")
+  list(REMOVE_DUPLICATES CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION)
+endforeach()
 
 # DEB specific
 file(READ "${CPACK_PACKAGE_DESCRIPTION_FILE}" PACKAGE_DESCRIPTION)
