@@ -306,8 +306,8 @@ void tbtadm::Controller::run()
     // TODO: help
     const std::string sep = " | ";
     m_out << "Usage: " << opt_devices << sep << opt_peers << sep << opt_topology << sep
-          << opt_approve << '[' << opt_once_flag << ']' << sep
-          << opt_approve_all << '[' << opt_once_flag << ']' << sep << opt_acl
+          << opt_approve << " [" << opt_once_flag << ']' << sep
+          << opt_approve_all << " [" << opt_once_flag << ']' << sep << opt_acl
           << sep << opt_remove << " <uuid>|<route-string>" << sep
           << opt_remove_all << "\n";
     throw std::runtime_error("Wrong usage");
