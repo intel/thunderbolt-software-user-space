@@ -17,6 +17,7 @@ set(TBT_CXXFLAGS ${CXX_FLAGS} -Wall -Wextra)
 
 add_subdirectory(common)
 add_subdirectory(tbtacl)
+add_subdirectory(tbtxdomain)
 add_subdirectory(tbtadm)
 add_subdirectory(docs)
 
