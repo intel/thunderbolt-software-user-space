@@ -1,0 +1,2 @@
+# Thunderbolt udev rules for XDomain connections
+SUBSYSTEM=="thunderbolt" ENV{DEVTYPE}=="thunderbolt_xdomain" ACTION=="add"  RUN+="@UDEV_BIN_DIR@/tbtxdomain add $devpath"
