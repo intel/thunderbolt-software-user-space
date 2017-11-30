@@ -63,6 +63,7 @@ const std::string domain          = "domain";
 const std::string hostRouteString = "-0";
 const std::string domainDevtype   = "DEVTYPE=thunderbolt_domain";
 const std::string deviceDevtype   = "DEVTYPE=thunderbolt_device";
+const std::string xdomainDevtype  = "DEVTYPE=thunderbolt_xdomain";
 
 // TODO: replace with boost.program_options
 const std::string opt_devices     = "devices";
@@ -160,6 +161,11 @@ bool isDevice(const fs::path& path)
 {
     return findUeventAttr(path, deviceDevtype)
            && !isHost(path.filename().string());
+}
+
+bool isXDomain(const fs::path& path)
+{
+    return findUeventAttr(path, xdomainDevtype);
 }
 
 struct SLDetails
@@ -388,20 +394,30 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
             continue;
         }
         auto p = dir.path();
-        if (!isDevice(p))
+        auto routeString = p.filename().string();
+        std::vector<std::string> desc;
+
+        if (isDevice(p))
+        {
+            desc.emplace_back(readDevice(p / deviceFilename) + ", "
+                              + readVendor(p / vendorFilename) + "\n");
+            desc.emplace_back("Route-string: " + routeString + "\n");
+            desc.emplace_back("Authorized: " + authorized(p) + "\n");
+            desc.emplace_back("In ACL: " + inACL(p) + "\n");
+            desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
+        }
+        else if (isXDomain(p))
+        {
+            desc.emplace_back(readDevice(p / deviceFilename) + ", "
+                              + readVendor(p / vendorFilename) + "\n");
+            desc.emplace_back("Route-string: " + routeString + "\n");
+            desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
+        }
+        else
         {
             continue;
         }
 
-        auto routeString = p.filename().string();
-        std::vector<std::string> desc;
-        desc.emplace_back(readDevice(p / deviceFilename) + ", "
-                          + readVendor(p / vendorFilename)
-                          + "\n");
-        desc.emplace_back("Route-string: " + routeString + "\n");
-        desc.emplace_back("Authorized: " + authorized(p) + "\n");
-        desc.emplace_back("In ACL: " + inACL(p) + "\n");
-        desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
         auto i =
             controller.m_children.emplace(routeString, std::move(desc)).first;
         createTree(i->second, dir.path());
