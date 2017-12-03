@@ -77,6 +77,31 @@ const std::string opt_once_flag   = "--once";
 const std::string indent     = "|   ";
 const std::string indentLast = "    ";
 
+const std::string green = "\x1b[0;32m";
+const std::string yellow = "\x1b[0;33m";
+const std::string normal = "\x1b[0m";
+
+class Highlight
+{
+public:
+    Highlight(std::ostream& out, const std::string& color)
+        : m_out(out), m_useColor(::isatty(STDOUT_FILENO))
+    {
+        if (m_useColor)
+            m_out << color;
+    }
+
+    ~Highlight()
+    {
+        if (m_useColor)
+            m_out << normal;
+    }
+
+private:
+    std::ostream& m_out;
+    bool m_useColor;
+};
+
 std::string read(const fs::path& path)
 {
     tbtadm::File file(path, tbtadm::File::Mode::Read);
@@ -282,10 +307,8 @@ void tbtadm::Controller::devices()
         }
 
         chdir(dir.path());
-        auto authorized = [] {
-            return stoi(readAndTrim(authorizedFilename)) ? "authorized"
-                                                         : "non-authorized";
-        };
+        bool authorized = stoi(readAndTrim(authorizedFilename));
+
         auto inACL = [sl = m_sl]
         {
             auto aclDir = acltree / readAndTrim(uniqueIDFilename);
@@ -302,8 +325,12 @@ void tbtadm::Controller::devices()
 
         // TODO: better formatting
         const auto routeString = dir.path().filename().string();
+
+        Highlight highlight(m_out, authorized ? green : normal);
+
         m_out << routeString << '\t' << readVendor(vendorFilename) << '\t'
-              << readDevice(deviceFilename) << '\t' << authorized() << '\t'
+              << readDevice(deviceFilename) << '\t'
+              << (authorized ? "authorized" : "non-authorized") << '\t'
               << inACL() << '\n';
     }
 }
@@ -567,7 +594,7 @@ void tbtadm::Controller::acl()
     }
 
     // Get UUID of all connected devices
-    std::vector<std::string> uuids;
+    std::map<std::string, bool> uuids;
     if (fs::exists(sysfsDevicesPath))
     {
         for (auto dir : boost::make_iterator_range(
@@ -581,16 +608,14 @@ void tbtadm::Controller::acl()
             {
                 continue;
             }
-            uuids.push_back(readAndTrim(dir.path() / uniqueIDFilename));
+            File authorizedFile(dir.path() / authorizedFilename,
+                                File::Mode::Read);
+            bool authorized = std::stoi(authorizedFile.read());
+            std::string uuid(readAndTrim(dir.path() / uniqueIDFilename));
+            uuids.insert(std::make_pair(uuid, authorized));
         }
         m_sl = findSL();
     }
-
-    auto connected = [&](const auto& uuid) {
-        return std::find(cbegin(uuids), cend(uuids), uuid) != cend(uuids)
-                   ? "connected"
-                   : "not connected";
-    };
 
     // Print ACL
     bool doNoKey = false;
@@ -601,9 +626,18 @@ void tbtadm::Controller::acl()
         if (m_sl != 2 || fs::exists(p / keyFilename))
         {
             const auto uuid = p.filename().string();
+            auto entry = uuids.find(uuid);
+            bool connected = entry != uuids.end();
+            std::string color = normal;
+
+            if (connected)
+                color = entry->second ? green : yellow;
+
+            Highlight highlight(m_out, color);
+
             m_out << uuid << '\t' << readVendor(p / vendorFilename) << '\t'
-                  << readDevice(p / deviceFilename) << '\t' << connected(uuid)
-                  << '\n';
+                  << readDevice(p / deviceFilename) << '\t'
+                  << (connected ? "connected" : "not connected") << "\n";
         }
         else
         {
@@ -620,9 +654,18 @@ void tbtadm::Controller::acl()
             if (!fs::exists(p / keyFilename))
             {
                 const auto uuid = p.filename().string();
+                auto entry = uuids.find(uuid);
+                bool connected = entry != uuids.end();
+                std::string color = normal;
+
+                if (connected)
+                    color = entry->second ? green : yellow;
+
+                Highlight highlight(m_out, color);
+
                 m_out << uuid << '\t' << readVendor(p / vendorFilename) << '\t'
                       << readDevice(p / deviceFilename) << '\t'
-                      << connected(uuid) << '\n';
+                      << (connected ? "connected" : "not connected") << "\n";
             }
         }
     }
