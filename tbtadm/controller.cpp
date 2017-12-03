@@ -74,8 +74,21 @@ const std::string opt_remove      = "remove";
 const std::string opt_remove_all  = "remove-all";
 const std::string opt_once_flag   = "--once";
 
-const std::string indent     = "|   ";
+const std::string indent     = "│   ";
+const size_t indentLength    = 4;
 const std::string indentLast = "    ";
+
+enum {
+    SYMBOL_PIPE,
+    SYMBOL_L,
+    SYMBOL_PLUS,
+};
+
+const std::string symbols[] = {
+    [SYMBOL_PIPE] = "│",
+    [SYMBOL_L] = "└─ ",
+    [SYMBOL_PLUS] = "├─ ",
+};
 
 const std::string green = "\x1b[0;32m";
 const std::string yellow = "\x1b[0;33m";
@@ -442,14 +455,15 @@ void tbtadm::Controller::printTree(
     for (const auto& device : map)
     {
         auto last = device.first == map.rbegin()->first;
-        m_out << indentation << "|\n";
-        m_out << indentation << "+- " << device.second.m_desc[0];
+        m_out << indentation << symbols[SYMBOL_PIPE] << "\n";
+        m_out << indentation << symbols[last ? SYMBOL_L : SYMBOL_PLUS]
+              << device.second.m_desc[0];
         indentation += last ? indentLast : indent;
         printDetails(device.second.m_children.empty(),
                      indentation,
                      device.second.m_desc);
         printTree(indentation, device.second.m_children);
-        indentation.resize(indentation.size() - indent.size());
+        indentation.resize(indentation.size() - indentLength);
     }
 }
 
@@ -457,11 +471,17 @@ void tbtadm::Controller::printDetails(bool last,
                                       std::string& indentation,
                                       const std::vector<std::string>& details)
 {
-    m_out << indentation << "+- Details:\n";
+    m_out << indentation << symbols[last ? SYMBOL_L : SYMBOL_PLUS] << "Details:\n";
+
     indentation += last ? indentLast : indent;
-    for (size_t i = 1; i < details.size(); ++i)
+
+    size_t detailsSize = details.size();
+    for (size_t i = 1; i < detailsSize; ++i)
     {
-        m_out << indentation << "+- " << details[i];
+        if (i == detailsSize - 1)
+            m_out << indentation << symbols[SYMBOL_L] << details[i];
+        else
+            m_out << indentation << symbols[SYMBOL_PLUS] << details[i];
     }
     indentation.resize(indentation.size() - indent.size());
 }
