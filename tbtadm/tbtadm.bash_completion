@@ -8,7 +8,7 @@ _tbtadm()
     COMPREPLY=()
     cur="$2"
     command="${COMP_WORDS[1]}"
-    opts="devices topology approve approve-all acl remove remove-all"
+    opts="devices peers topology approve approve-all acl remove remove-all"
 
     case "$command" in
     approve|remove)

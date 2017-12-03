@@ -67,6 +67,7 @@ const std::string xdomainDevtype  = "DEVTYPE=thunderbolt_xdomain";
 
 // TODO: replace with boost.program_options
 const std::string opt_devices     = "devices";
+const std::string opt_peers       = "peers";
 const std::string opt_topology    = "topology";
 const std::string opt_approve     = "approve";
 const std::string opt_approve_all = "approve-all";
@@ -257,6 +258,10 @@ void tbtadm::Controller::run()
         {
             return devices();
         }
+        if (m_argv[1] == opt_peers)
+        {
+            return peers();
+        }
         if (m_argv[1] == opt_topology)
         {
             return topology();
@@ -300,7 +305,7 @@ void tbtadm::Controller::run()
 
     // TODO: help
     const std::string sep = " | ";
-    m_out << "Usage: " << opt_devices << sep << opt_topology << sep
+    m_out << "Usage: " << opt_devices << sep << opt_peers << sep << opt_topology << sep
           << opt_approve << '[' << opt_once_flag << ']' << sep
           << opt_approve_all << '[' << opt_once_flag << ']' << sep << opt_acl
           << sep << opt_remove << " <uuid>|<route-string>" << sep
@@ -351,6 +356,30 @@ void tbtadm::Controller::devices()
               << readDevice(deviceFilename) << '\t'
               << (authorized ? "authorized" : "non-authorized") << '\t'
               << inACL() << '\n';
+    }
+}
+
+void tbtadm::Controller::peers()
+{
+    for (auto dir : boost::make_iterator_range(
+             fs::directory_iterator(sysfsDevicesPath), {}))
+    {
+        if (dir.status().type() != fs::directory_file)
+        {
+            continue;
+        }
+        if (!isXDomain(dir.path()))
+        {
+            continue;
+        }
+
+        chdir(dir.path());
+
+        // TODO: better formatting
+        const auto routeString = dir.path().filename().string();
+
+        m_out << routeString << '\t' << readVendor(vendorFilename) << '\t'
+              << readDevice(deviceFilename) << std::endl;
     }
 }
 
