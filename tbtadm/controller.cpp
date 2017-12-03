@@ -502,7 +502,7 @@ void tbtadm::Controller::approve(const fs::path& dir) try
     }
 
     std::ostringstream keyStream;
-    if (m_sl == 2)
+    if (m_sl == 2 && !m_once)
     {
         std::default_random_engine eng(std::random_device{}());
         std::uniform_int_distribution<> dist(0, 0xF);
