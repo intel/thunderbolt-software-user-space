@@ -53,6 +53,9 @@ private:
     /// Prints all connected devices
     void devices();
 
+    /// Prints all connected peers (hosts)
+    void peers();
+
     /// Prints all connected devices in a tree
     void topology();
 
