@@ -38,7 +38,7 @@ set(CPACK_PACKAGING_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
 
 # RPM specific
 set(CPACK_PACKAGE_RELOCATABLE OFF)
-set(CPACK_RPM_PACKAGE_REQUIRES "boost-program-options, boost-filesystem")
+set(CPACK_RPM_PACKAGE_REQUIRES "boost-filesystem")
 
 function(ALL_ANCESTOR_DIRS result dir)
     while(NOT dir STREQUAL "/")
