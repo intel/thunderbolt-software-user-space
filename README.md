@@ -46,7 +46,6 @@ module.
 ### Build dependencies
 Build dependencies are:
 - CMake
-- boost.program_options
 - boost.filesystem
 - txt2tags (for generating the man page)
 
@@ -60,7 +59,7 @@ Tested with:
 
 For example, on Ubuntu you can install the dependencies with the following
 command:  
-`apt install cmake libboost-filesystem-dev libboost-program-options-dev txt2tags`  
+`apt install cmake libboost-filesystem-dev txt2tags`
 On Fedora, use this:  
 `dnf install cmake boost-devel txt2tags`
 

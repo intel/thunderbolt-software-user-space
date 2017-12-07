@@ -32,20 +32,18 @@
 #include "controller.h"
 
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <random>
 #include <iterator>
 #include <algorithm>
 
-#include <boost/program_options.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <boost/algorithm/string/trim.hpp>
 
 #include "file.h"
 
 using namespace std::string_literals;
-
-namespace po = boost::program_options;
 
 namespace
 {
@@ -65,7 +63,6 @@ const std::string domainDevtype   = "DEVTYPE=thunderbolt_domain";
 const std::string deviceDevtype   = "DEVTYPE=thunderbolt_device";
 const std::string xdomainDevtype  = "DEVTYPE=thunderbolt_xdomain";
 
-// TODO: replace with boost.program_options
 const std::string opt_devices     = "devices";
 const std::string opt_peers       = "peers";
 const std::string opt_topology    = "topology";
@@ -251,7 +248,6 @@ tbtadm::Controller::Controller(int argc,
 
 void tbtadm::Controller::run()
 {
-    // TODO: replace with boost.program_options
     if (m_argc >= 2)
     {
         if (m_argv[1] == opt_devices)
