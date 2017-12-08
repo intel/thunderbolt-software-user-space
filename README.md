@@ -33,7 +33,7 @@ handling the ACL and more.
 
 Linux kernel v4.13.0 or later is required.
 
-- Debian 9.0 (stretch) [package status / QA page](https://packages.qa.debian.org/thunderbolt-tools) [bug reports](https://bugs.debian.org/src:thunderbolt-tools)
+- Debian 9.0 (stretch) - [package status / QA page](https://packages.qa.debian.org/thunderbolt-tools) - [bug reports](https://bugs.debian.org/src:thunderbolt-tools)
 - Ubuntu* 16.04 and 17.04
 - Fedora* 26
 - Clear Linux*
