@@ -586,8 +586,14 @@ void tbtadm::Controller::approve(const fs::path& dir) try
     File authorized(authorizedFilename, File::Mode::Read);
     if (std::stoi(authorized.read()))
     {
-        m_out << "Already authorized\n";
+        m_out << "Already authorized, checking could we add to ACL\n";
         already_authorized = true;
+
+        if (m_sl == 2)
+        {
+            m_out << "Cannot approve already authorized devices in SL2 mode\n";
+            return;
+        }
     }
 
     if (!m_once)
@@ -609,12 +615,13 @@ void tbtadm::Controller::approve(const fs::path& dir) try
         key << keyStream.str();
     }
 
-    if (!already_authorized) {
+    if (!already_authorized)
+    {
         authorized = File(authorizedFilename, File::Mode::Write);
         authorized << 1;
+        m_out << "Authorized\n";
     }
 
-    m_out << "Authorized\n";
     if (m_sl == 2 && !m_once)
     {
         File keyACL(acltree / readAndTrim(uniqueIDFilename) / keyFilename,
