@@ -80,19 +80,20 @@ const std::string indent     = "│   ";
 const size_t indentLength    = 4;
 const std::string indentLast = "    ";
 
-enum {
+enum
+{
     SYMBOL_PIPE,
     SYMBOL_L,
     SYMBOL_PLUS,
 };
 
 const std::string symbols[] = {
-    [SYMBOL_PIPE] = "│",
-    [SYMBOL_L] = "└─ ",
-    [SYMBOL_PLUS] = "├─ ",
+        [SYMBOL_PIPE] = "│",
+        [SYMBOL_L]    = "└─ ",
+        [SYMBOL_PLUS] = "├─ ",
 };
 
-const std::string green = "\x1b[0;32m";
+const std::string green  = "\x1b[0;32m";
 const std::string yellow = "\x1b[0;33m";
 const std::string normal = "\x1b[0m";
 
@@ -305,10 +306,10 @@ void tbtadm::Controller::run()
 
     // TODO: help
     const std::string sep = " | ";
-    m_out << "Usage: " << opt_devices << sep << opt_peers << sep << opt_topology << sep
-          << opt_approve << " [" << opt_once_flag << "] <route-string>" << sep
-          << opt_approve_all << " [" << opt_once_flag << ']' << sep << opt_acl
-          << sep << opt_remove << " <uuid>|<route-string>" << sep
+    m_out << "Usage: " << opt_devices << sep << opt_peers << sep << opt_topology
+          << sep << opt_approve << " [" << opt_once_flag << "] <route-string>"
+          << sep << opt_approve_all << " [" << opt_once_flag << ']' << sep
+          << opt_acl << sep << opt_remove << " <uuid>|<route-string>" << sep
           << opt_remove_all << "\n";
     throw std::runtime_error("Wrong usage");
 }
@@ -462,14 +463,15 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
         {
             continue;
         }
-        auto p = dir.path();
+        auto p           = dir.path();
         auto routeString = p.filename().string();
         std::vector<std::string> desc;
 
         if (isDevice(p))
         {
             desc.emplace_back(readDevice(p / deviceFilename) + ", "
-                              + readVendor(p / vendorFilename) + "\n");
+                              + readVendor(p / vendorFilename)
+                              + "\n");
             desc.emplace_back("Route-string: " + routeString + "\n");
             desc.emplace_back("Authorized: " + authorized(p) + "\n");
             desc.emplace_back("In ACL: " + inACL(p) + "\n");
@@ -478,7 +480,8 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
         else if (isXDomain(p))
         {
             desc.emplace_back(readDevice(p / deviceFilename) + ", "
-                              + readVendor(p / vendorFilename) + "\n");
+                              + readVendor(p / vendorFilename)
+                              + "\n");
             desc.emplace_back("Route-string: " + routeString + "\n");
             desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
         }
@@ -516,7 +519,8 @@ void tbtadm::Controller::printDetails(bool last,
                                       std::string& indentation,
                                       const std::vector<std::string>& details)
 {
-    m_out << indentation << symbols[last ? SYMBOL_L : SYMBOL_PLUS] << "Details:\n";
+    m_out << indentation << symbols[last ? SYMBOL_L : SYMBOL_PLUS]
+          << "Details:\n";
 
     indentation += last ? indentLast : indent;
 
@@ -690,9 +694,9 @@ void tbtadm::Controller::acl()
         const auto p = dir.path();
         if (m_sl != 2 || fs::exists(p / keyFilename))
         {
-            const auto uuid = p.filename().string();
-            auto entry = uuids.find(uuid);
-            bool connected = entry != uuids.end();
+            const auto uuid   = p.filename().string();
+            auto entry        = uuids.find(uuid);
+            bool connected    = entry != uuids.end();
             std::string color = normal;
 
             if (connected)
@@ -718,9 +722,9 @@ void tbtadm::Controller::acl()
             const auto p = dir.path();
             if (!fs::exists(p / keyFilename))
             {
-                const auto uuid = p.filename().string();
-                auto entry = uuids.find(uuid);
-                bool connected = entry != uuids.end();
+                const auto uuid   = p.filename().string();
+                auto entry        = uuids.find(uuid);
+                bool connected    = entry != uuids.end();
                 std::string color = normal;
 
                 if (connected)
