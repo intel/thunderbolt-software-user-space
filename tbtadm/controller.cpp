@@ -72,6 +72,7 @@ const std::string opt_topology    = "topology";
 const std::string opt_approve     = "approve";
 const std::string opt_approve_all = "approve-all";
 const std::string opt_acl         = "acl";
+const std::string opt_add         = "add";
 const std::string opt_remove      = "remove";
 const std::string opt_remove_all  = "remove-all";
 const std::string opt_once_flag   = "--once";
@@ -291,6 +292,14 @@ void tbtadm::Controller::run()
         {
             return acl();
         }
+        if (m_argv[1] == opt_add)
+        {
+            if (m_argc == 3)
+            {
+                m_sl = findSL();
+                return add(sysfsDevicesPath / m_argv[2]);
+            }
+        }
         if (m_argv[1] == opt_remove)
         {
             if (m_argc == 3)
@@ -309,8 +318,8 @@ void tbtadm::Controller::run()
     m_out << "Usage: " << opt_devices << sep << opt_peers << sep << opt_topology
           << sep << opt_approve << " [" << opt_once_flag << "] <route-string>"
           << sep << opt_approve_all << " [" << opt_once_flag << ']' << sep
-          << opt_acl << sep << opt_remove << " <uuid>|<route-string>" << sep
-          << opt_remove_all << "\n";
+          << opt_acl << sep << opt_add << " <route-string>" << sep << opt_remove
+          << " <uuid>|<route-string>" << sep << opt_remove_all << "\n";
     throw std::runtime_error("Wrong usage");
 }
 
@@ -738,6 +747,18 @@ void tbtadm::Controller::acl()
             }
         }
     }
+}
+
+void tbtadm::Controller::add(const fs::path& dir)
+{
+    if (m_sl == 2)
+    {
+        m_out << "Adding to ACL on SL2 must be done together with device "
+                 "approval\n";
+        return;
+    }
+    chdir(dir);
+    addToACL();
 }
 
 // TODO: move to tbtadm-helper

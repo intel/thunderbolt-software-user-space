@@ -8,10 +8,10 @@ _tbtadm()
     COMPREPLY=()
     cur="$2"
     command="${COMP_WORDS[1]}"
-    opts="devices peers topology approve approve-all acl remove remove-all"
+    opts="devices peers topology approve approve-all acl add remove remove-all"
 
     case "$command" in
-    approve|remove)
+    approve|add|remove)
         local routestrings
         routestrings="$( [ -d ${devices} ] && command ls ${devices} | command grep -v domain | command grep -Fv . | command grep -v [0-9]-0)"
         COMPREPLY+=( $(compgen -W "${routestrings}" -- "$cur") )
