@@ -25,6 +25,8 @@ tbtadm - Thunderbolt(tm) management tool
 
 **tbtadm acl**
 
+**tbtadm add** <route-string>
+
 **tbtadm remove** <uuid | route-string>
 
 **tbtadm remove-all**
@@ -70,6 +72,12 @@ Print the ACL content in the following format:
 ```
 UUID    Vendor    Device name    Currently connected?
 ```
+
+: **add** <route-string>
+Add a device to ACL. The argument selects the device to be added by its
+route-string. Doesn't work in SL2 (secure; key-based) as addition to ACL must be
+done together with the device authorization (with ``approve`` or ``approve-all``
+without ``--once`` flag).
 
 : **remove** <uuid | route-string>
 Remove ACL entry. The argument selects the device to be removed by its UUID or

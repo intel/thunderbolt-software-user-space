@@ -85,6 +85,9 @@ private:
     /// Prints ACL
     void acl();
 
+    /// Add the given device to ACL
+    void add(const fs::path& dir);
+
     /// Removes the given UUID from ACL
     void remove(std::string uuid);
 
