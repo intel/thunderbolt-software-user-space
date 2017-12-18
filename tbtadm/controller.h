@@ -79,8 +79,8 @@ private:
     /// Approves the given device
     void approve(const fs::path& dir);
 
-    /// Adds to ACL the device from current PWD
-    void addToACL();
+    /// Adds to ACL the given device
+    void addToACL(const fs::path& dir);
 
     /// Prints ACL
     void acl();
