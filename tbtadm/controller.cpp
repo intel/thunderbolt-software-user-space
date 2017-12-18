@@ -336,12 +336,12 @@ void tbtadm::Controller::devices()
             continue;
         }
 
-        chdir(dir.path());
-        bool authorized = stoi(readAndTrim(authorizedFilename));
+        bool authorized = stoi(readAndTrim(dir.path() / authorizedFilename));
 
-        auto inACL = [sl = m_sl]
+        auto inACL = [sl = m_sl] (const auto& dir)
         {
-            auto aclDir = acltree / readAndTrim(uniqueIDFilename);
+            auto aclDir = acltree / readAndTrim(dir.path() / uniqueIDFilename);
+
             if (!fs::exists(aclDir))
             {
                 return "not in ACL";
@@ -358,10 +358,10 @@ void tbtadm::Controller::devices()
 
         Highlight highlight(m_out, authorized ? green : normal);
 
-        m_out << routeString << '\t' << readVendor(vendorFilename) << '\t'
-              << readDevice(deviceFilename) << '\t'
-              << (authorized ? "authorized" : "non-authorized") << '\t'
-              << inACL() << '\n';
+        m_out << routeString << '\t' << readVendor(dir.path() / vendorFilename)
+              << '\t' << readDevice(dir.path() / deviceFilename)
+              << '\t' << (authorized ? "authorized" : "non-authorized")
+              << '\t' << inACL(dir) << '\n';
     }
 }
 
@@ -587,10 +587,9 @@ void tbtadm::Controller::approveAll(const fs::path& dir)
 // TODO: move to tbtadm-helper
 void tbtadm::Controller::approve(const fs::path& dir) try
 {
-    chdir(dir);
     m_out << "Authorizing " << dir << '\n';
 
-    File authorized(authorizedFilename, File::Mode::Read);
+    File authorized(dir / authorizedFilename, File::Mode::Read);
     if (std::stoi(authorized.read()))
     {
         m_out << "Already authorized\n";
@@ -599,7 +598,7 @@ void tbtadm::Controller::approve(const fs::path& dir) try
 
     if (!m_once)
     {
-        addToACL();
+        addToACL(dir);
     }
 
     std::ostringstream keyStream;
@@ -612,17 +611,17 @@ void tbtadm::Controller::approve(const fs::path& dir) try
             return dist(eng);
         });
 
-        File key(keyFilename, File::Mode::Write);
+        File key(dir / keyFilename, File::Mode::Write);
         key << keyStream.str();
     }
 
-    authorized = File(authorizedFilename, File::Mode::Write);
+    authorized = File(dir / authorizedFilename, File::Mode::Write);
     authorized << 1;
 
     m_out << "Authorized\n";
     if (m_sl == 2 && !m_once)
     {
-        File keyACL(acltree / readAndTrim(uniqueIDFilename) / keyFilename,
+        File keyACL(acltree / readAndTrim(dir / uniqueIDFilename) / keyFilename,
                     File::Mode::Write,
                     O_CREAT,
                     S_IRUSR);
@@ -643,9 +642,9 @@ catch (...)
     m_err << "Unknown exception\n";
 }
 
-void tbtadm::Controller::addToACL()
+void tbtadm::Controller::addToACL(const fs::path& dir)
 {
-    auto acl = acltree / readAndTrim(uniqueIDFilename);
+    auto acl = acltree / readAndTrim(dir / uniqueIDFilename);
     if (fs::exists(acl))
     {
         m_out << "Already in ACL\n";
@@ -653,8 +652,8 @@ void tbtadm::Controller::addToACL()
     }
 
     fs::create_directories(acl);
-    fs::copy(vendorFilename, acl / vendorFilename);
-    fs::copy(deviceFilename, acl / deviceFilename);
+    fs::copy(dir / vendorFilename, acl / vendorFilename);
+    fs::copy(dir / deviceFilename, acl / deviceFilename);
 
     m_out << "Added to ACL\n";
 }
@@ -753,8 +752,7 @@ void tbtadm::Controller::add(const fs::path& dir)
                  "approval\n";
         return;
     }
-    chdir(dir);
-    addToACL();
+    addToACL(dir);
 }
 
 // TODO: move to tbtadm-helper
