@@ -1,23 +1,12 @@
 language: cpp
-script:
-  - mkdir build && cd build && cmake .. && cmake --build .
-matrix:
-  include:
-    compiler:
-      - gcc
-      # clang
-    addons:
-      apt:
-        sources:
-          - ubuntu-toolchain-r-test
-        packages:
-          - libboost-filesystem-dev
-          - libboost-program-options-dev
-          - txt2tags
-          #- g++-4.8
-          - g++-7
-          #- libstdc++6-4.7-dev
-    env:
-      - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+
+services:
+  - docker
+
 before_install:
-  - eval "${MATRIX_EVAL}"
+  # Build an image from Dockerfile
+  - docker build -t dockerbuild -f tests/Dockerfile .
+
+script:
+  # Run build in Docker
+  - docker run -e -t -v `pwd`:/usr/local/src/thunderbolt-tools dockerbuild /bin/bash ./tests/docker-build.sh
