@@ -21,6 +21,13 @@ add_subdirectory(tbtxdomain)
 add_subdirectory(tbtadm)
 add_subdirectory(docs)
 
+configure_file(tests/test-integration-mock.py tests/test-integration-mock.py COPYONLY)
+
+add_custom_target(check
+	COMMAND umockdev-wrapper python3 tests/test-integration-mock.py
+	DEPENDS tests/test-integration-mock.py tbtadm
+)
+
 set(PACKAGE_SUMMARY "User-space components for handling Thunderbolt controller and devices")
 
 set(CPACK_RPM_COMPONENT_INSTALL ON)
