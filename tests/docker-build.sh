@@ -15,6 +15,7 @@ popd
 
 echo "Returning to " `pwd`
 
-mkdir -p build && cd build && cmake .. && cmake --build .
-export LC_ALL=C.UTF-8
-make check
+rm -rf build && mkdir build
+cd build && cmake .. && cmake --build .
+
+LC_ALL=C.UTF-8 make check
