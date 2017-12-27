@@ -1,4 +1,4 @@
-FROM debian:sid
+FROM debian:testing
 RUN apt-get update -q && apt-get install -y \
     git \
     gobject-introspection \
