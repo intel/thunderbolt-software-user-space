@@ -310,11 +310,17 @@ class thunderbolt_test(unittest.TestCase):
         authorized = self.get_authorized()
         self.assertEqual(authorized, "No")
 
+        uuid = self.get_uuid()
+        self.assertNotEqual(uuid, None)
+
         output = subprocess.check_output(shlex.split("%s approve --once 0-1" % TBTADM))
         self.assertTrue(b'Authorized' in output)
 
         authorized = self.get_authorized()
         self.assertEqual(authorized, "Yes")
+
+        # ACL should not exist
+        self.assertFalse(os.path.isdir(ACL + "/" + uuid))
 
         # Test that second authorization returns "Already authorized"
         output = subprocess.check_output(shlex.split("%s approve --once 0-1" % TBTADM))
@@ -359,6 +365,11 @@ class thunderbolt_test(unittest.TestCase):
         # ACL entry should be created for given UUID
         self.assertTrue(os.path.isdir(ACL + "/" + uuid))
 
+        # Verify content of ACL directory
+        ls = os.listdir(ACL + "/" + uuid)
+        ls.sort()
+        self.assertTrue(ls == ['device_name', 'vendor_name'])
+
         # disconnect all devices
         tree.disconnect(self.testbed)
 
@@ -375,11 +386,17 @@ class thunderbolt_test(unittest.TestCase):
         authorized = self.get_authorized()
         self.assertEqual(authorized, "No")
 
+        uuid = self.get_uuid()
+        self.assertNotEqual(uuid, None)
+
         output = subprocess.check_output(shlex.split("%s approve --once 0-1" % TBTADM))
         self.assertTrue(b'Authorized' in output)
 
         authorized = self.get_authorized()
         self.assertEqual(authorized, "Yes")
+
+        # ACL should not exist
+        self.assertFalse(os.path.isdir(ACL + "/" + uuid))
 
         # Test that second authorization returns "Already authorized"
         output = subprocess.check_output(shlex.split("%s approve --once 0-1" % TBTADM))
@@ -428,6 +445,8 @@ class thunderbolt_test(unittest.TestCase):
 
         # ACL entry should be created for given UUID
         self.assertTrue(os.path.isdir(ACL + "/" + uuid))
+
+        # Verify content of ACL directory
         ls = os.listdir(ACL + "/" + uuid)
         ls.sort()
         self.assertTrue(ls == ['device_name', 'key','vendor_name'])
