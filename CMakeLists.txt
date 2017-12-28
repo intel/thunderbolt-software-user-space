@@ -22,10 +22,37 @@ add_subdirectory(tbtadm)
 add_subdirectory(docs)
 
 configure_file(tests/test-integration-mock.py tests/test-integration-mock.py COPYONLY)
+configure_file(tests/Dockerfile tests/Dockerfile COPYONLY)
 
 add_custom_target(check
 	COMMAND umockdev-wrapper python3 tests/test-integration-mock.py
 	DEPENDS tests/test-integration-mock.py tbtadm
+)
+
+set(DOCKER_IMAGE "thunderbolt-tools")
+
+set(DOCKER_BUILD_CMD
+	docker build
+	--tag ${DOCKER_IMAGE}
+	--file tests/Dockerfile
+	.
+)
+add_custom_target(docker-build
+	COMMAND ${DOCKER_BUILD_CMD}
+	DEPENDS tests/Dockerfile
+)
+
+set(DOCKER_RUN_CMD
+	docker run
+	--env
+	--tty
+	--volume ${CMAKE_CURRENT_LIST_DIR}:/usr/local/src/thunderbolt-tools
+	${DOCKER_IMAGE}
+	/bin/bash tests/docker-build.sh
+)
+add_custom_target(docker-run
+	COMMAND ${DOCKER_RUN_CMD}
+	DEPENDS tests tbtadm
 )
 
 set(PACKAGE_SUMMARY "User-space components for handling Thunderbolt controller and devices")
