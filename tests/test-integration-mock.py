@@ -52,6 +52,8 @@ except ImportError as e:
 # Configuration
 TBTADM = "tbtadm/tbtadm"
 ACL = "/var/lib/thunderbolt/acl"
+VENDOR = "Mock Vendor"
+DEVICE_NAME = "Thunderbolt Cable"
 
 # Mock Device Tree
 class Device(object):
@@ -214,21 +216,42 @@ class thunderbolt_test(unittest.TestCase):
     def setUp(self):
         self.testbed = UMockdev.Testbed.new()
         print("\nPreparing test case\n")
+        # Remove ACL database before each test case
+        for root, dirs, files in os.walk(ACL, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
 
     def tearDown(self):
         print(self)
-        print(self.testbed)
         log.debug("Tear down test case")
 
     # mock tree stuff
     def default_mock_tree(self):
         # default mock tree
-        mt = TbDomain(host=TbHost([
-            TbDevice('0-1', device_name = 'Thunderbolt Cable',
-                      vendor = 'Mock Vendor'),
-        ]))
-        return mt
+        tree = TbDomain(host=TbHost([
+            TbDevice('0-1', device_name = DEVICE_NAME, vendor = VENDOR)]))
+        return tree
 
+    # Authorized security level 0 device tree
+    def authorized_mock_tree(self):
+        # Tree with security level 0
+        tree = TbDomain(security = TbDomain.SECURITY_NONE, host = TbHost([
+            TbDevice('0-1', device_name = DEVICE_NAME,
+                      vendor = VENDOR, authorized = 1)]))
+        return tree
+
+    # Parse tbtadm devices
+    def get_device_line(self, route):
+        u = subprocess.check_output(
+                shlex.split("%s devices" % TBTADM)).decode("utf-8")
+        lines = u.splitlines()
+        for l in lines:
+            if re.findall("^%s" % route, l):
+                return l
+
+    # Parse tbtadm topology
     def extract_property(self, u, prop):
         lines = u.splitlines()
         for l in lines:
@@ -261,10 +284,12 @@ class thunderbolt_test(unittest.TestCase):
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
 
-        output = subprocess.check_output(shlex.split("%s devices" % TBTADM))
+        output = self.get_device_line("0-1")
         log.debug(output)
-        self.assertEqual(output,
-                         b'0-1\tMock Vendor\tThunderbolt Cable\tnon-authorized\tnot in ACL\n');
+        self.assertTrue(VENDOR in output)
+        self.assertTrue(DEVICE_NAME in output)
+        self.assertTrue("non-authorized" in output)
+        self.assertTrue("not in ACL" in output)
 
         # disconnect all devices
         tree.disconnect(self.testbed)
@@ -292,6 +317,65 @@ class thunderbolt_test(unittest.TestCase):
 
         seclevel = self.get_seclevel()
         self.assertEqual(seclevel, "SL1 (user)")
+
+        # disconnect all devices
+        tree.disconnect(self.testbed)
+
+    def test_tbtadm_authorization_sl0(self):
+        # connect all device
+        tree = self.authorized_mock_tree()
+        tree.connect_tree(self.testbed)
+
+        # Check security is User (SL0)
+        seclevel = self.get_seclevel()
+        self.assertEqual(seclevel, "SL0 (none)")
+
+        # Check authorized
+        authorized = self.get_authorized()
+        self.assertEqual(authorized, "Yes")
+
+        # Check ACL presence
+        in_acl = self.get_acl_status()
+        self.assertEqual(in_acl, "No")
+
+        # Get uuid
+        uuid = self.get_uuid()
+        self.assertNotEqual(uuid, None)
+
+        output = subprocess.check_output(shlex.split("%s approve-all" % TBTADM))
+        self.assertTrue(b'Approval not relevant in SL0' in output)
+
+        output = subprocess.check_output(shlex.split("%s approve --once 0-1" % TBTADM))
+        self.assertTrue(b'Already authorized' in output)
+
+        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        self.assertTrue(b'Already authorized' in output)
+
+        output = subprocess.check_output(shlex.split("%s add 0-1" % TBTADM))
+        self.assertTrue(b'Adding to ACL is not relevant in SL0' in output)
+
+        # ACL should not exist
+        self.assertFalse(os.path.isdir(ACL + "/" + uuid))
+
+        output = subprocess.check_output(shlex.split("%s acl" % TBTADM))
+        log.debug(output)
+        self.assertTrue(b'ACL is empty' in output)
+
+        output = subprocess.check_output(shlex.split("%s devices" % TBTADM))
+        log.debug(output)
+
+        output = self.get_device_line("0-1")
+        self.assertTrue(VENDOR in output)
+        self.assertTrue(DEVICE_NAME in output)
+        self.assertFalse("non-authorized" in output)
+        self.assertTrue("not in ACL" in output)
+
+        # Test remove
+        output = subprocess.check_output(shlex.split("%s remove 0-1" % TBTADM))
+        self.assertTrue(b'ACL entry doesn\'t exist' in output)
+
+        output = subprocess.check_output(shlex.split("%s remove-all" % TBTADM))
+        self.assertTrue(b'ACL is empty' in output)
 
         # disconnect all devices
         tree.disconnect(self.testbed)
