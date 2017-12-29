@@ -173,8 +173,8 @@ class TbDevice(Device):
         return isinstance(d, TbDevice) and d.authorized == 0
 
 class TbHost(TbDevice):
-    def __init__(self, children):
-        super(TbHost, self).__init__('0-0',
+    def __init__(self, children, index = 0):
+        super(TbHost, self).__init__('%d-0' % index,
                                      authorized=1,
                                      uid='3b7d4bad-4fdf-44ff-8730-ffffdeadbabe',
                                      device_name='Controller',
@@ -195,7 +195,7 @@ class TbDomain(Device):
     SECURITY_USER = 'user'
     SECURITY_SECURE = 'secure'
 
-    def __init__(self, security=SECURITY_SECURE, index=0, host=None):
+    def __init__(self, security = SECURITY_SECURE, index = 0, host = None):
         assert host
         assert isinstance(host, TbHost)
         name = 'domain%d' % index
@@ -235,11 +235,13 @@ class thunderbolt_test(unittest.TestCase):
         return tree
 
     # Authorized security level 0 device tree
-    def authorized_mock_tree(self):
+    def authorized_mock_tree(self, index = 0):
         # Tree with security level 0
-        tree = TbDomain(security = TbDomain.SECURITY_NONE, host = TbHost([
-            TbDevice('0-1', device_name = DEVICE_NAME,
-                      vendor = VENDOR, authorized = 1)]))
+        host = TbHost([TbDevice('%d-1' % index, device_name = DEVICE_NAME,
+                      vendor = VENDOR, authorized = 1)], index = index)
+        tree = TbDomain(security = TbDomain.SECURITY_NONE, index = index,
+                        host = host)
+
         return tree
 
     # Parse tbtadm devices
@@ -537,6 +539,25 @@ class thunderbolt_test(unittest.TestCase):
 
         # disconnect all devices
         tree.disconnect(self.testbed)
+
+    # Test multi - controller device tree
+    def test_x(self):
+        # connect all device
+        device1 = TbDevice("Device1")
+        device2 = TbDevice("Device2", children = [device1])
+        tree1 = TbDomain(host = TbHost([device2]))
+        tree1.connect_tree(self.testbed)
+
+        device3 = TbDevice("Device3")
+        device4 = TbDevice("Device4", children = [device3])
+        tree2 = TbDomain(host = TbHost([device4], index = 1), index = 1)
+        tree2.connect_tree(self.testbed)
+
+        subprocess.run(shlex.split("%s topology" % TBTADM))
+
+        # disconnect all devices
+        tree1.disconnect(self.testbed)
+        tree2.disconnect(self.testbed)
 
 if __name__ == '__main__':
     # run ourselves under umockdev
