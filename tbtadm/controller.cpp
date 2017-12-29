@@ -746,12 +746,17 @@ void tbtadm::Controller::acl()
 
 void tbtadm::Controller::add(const fs::path& dir)
 {
-    if (m_sl == 2)
+    switch (m_sl)
     {
-        m_out << "Adding to ACL on SL2 must be done together with device "
-                 "approval\n";
-        return;
+        case 2:
+            m_out << "Adding to ACL on SL2 must be done together with device "
+                    "approval\n";
+            return;
+        case 0:
+            m_out << "Adding to ACL is not relevant in SL0\n";
+            return;
     }
+
     addToACL(dir);
 }
 
