@@ -59,7 +59,8 @@ Tested with:
 
 For example, on Ubuntu you can install the dependencies with the following
 command:  
-`apt install cmake libboost-filesystem-dev txt2tags`
+`sudo apt-get install cmake libboost-filesystem-dev txt2tags pkg-config`
+
 On Fedora, use this:  
 `dnf install cmake boost-devel txt2tags`
 
