@@ -85,6 +85,14 @@ enum
     SYMBOL_PLUS,
 };
 
+enum security_level
+{
+    SECURITY_LEVEL_NONE = 0,
+    SECURITY_LEVEL_USER,
+    SECURITY_LEVEL_SECURE,
+    SECURITY_LEVEL_DPONLY,
+};
+
 const std::string symbols[] = {
         [SYMBOL_PIPE] = "│",
         [SYMBOL_L]    = "└─ ",
@@ -557,10 +565,18 @@ void tbtadm::Controller::approveAll()
         auto domainNum = dir.path().filename().string().substr(domain.size());
         m_sl =
             slMap.find(readAndTrim(dir.path() / securityFilename))->second.num;
-        if (m_sl != 1 && m_sl != 2)
+        switch (m_sl)
         {
-            m_out << "Approval not relevant in SL" << m_sl << '\n';
-            return;
+            case SECURITY_LEVEL_USER:
+            case SECURITY_LEVEL_SECURE:
+                break;
+            case SECURITY_LEVEL_NONE:
+            case SECURITY_LEVEL_DPONLY:
+                m_out << "Approval not relevant in SL" << m_sl << '\n';
+                return;
+            default:
+                m_out << "Unknown Security level " << m_sl << '\n';
+                return;
         }
         approveAll(dir / (domainNum + hostRouteString));
     }
@@ -602,7 +618,7 @@ void tbtadm::Controller::approve(const fs::path& dir) try
     }
 
     std::ostringstream keyStream;
-    if (m_sl == 2 && !m_once)
+    if (m_sl == SECURITY_LEVEL_SECURE && !m_once)
     {
         std::default_random_engine eng(std::random_device{}());
         std::uniform_int_distribution<> dist(0, 0xF);
@@ -619,7 +635,7 @@ void tbtadm::Controller::approve(const fs::path& dir) try
     authorized << 1;
 
     m_out << "Authorized\n";
-    if (m_sl == 2 && !m_once)
+    if (m_sl == SECURITY_LEVEL_SECURE && !m_once)
     {
         File keyACL(acltree / readAndTrim(dir / uniqueIDFilename) / keyFilename,
                     File::Mode::Write,
@@ -696,7 +712,7 @@ void tbtadm::Controller::acl()
          boost::make_iterator_range(fs::directory_iterator(acltree), {}))
     {
         const auto p = dir.path();
-        if (m_sl != 2 || fs::exists(p / keyFilename))
+        if (m_sl != SECURITY_LEVEL_SECURE || fs::exists(p / keyFilename))
         {
             const auto uuid   = p.filename().string();
             auto entry        = uuids.find(uuid);
@@ -748,12 +764,18 @@ void tbtadm::Controller::add(const fs::path& dir)
 {
     switch (m_sl)
     {
-        case 2:
+        case SECURITY_LEVEL_SECURE:
             m_out << "Adding to ACL on SL2 must be done together with device "
                     "approval\n";
             return;
-        case 0:
-            m_out << "Adding to ACL is not relevant in SL0\n";
+        case SECURITY_LEVEL_NONE:
+        case SECURITY_LEVEL_DPONLY:
+            m_out << "Adding to ACL is not relevant in SL" << m_sl << '\n';
+            return;
+        case SECURITY_LEVEL_USER:
+            break;
+        default:
+            m_out << "Unknown Security level " << m_sl << '\n';
             return;
     }
 
