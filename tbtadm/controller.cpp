@@ -433,7 +433,9 @@ void tbtadm::Controller::topology()
     {
         auto last = host.first == controllers.rbegin()->first;
         m_out << host.second.m_desc[0];
-        indentation += last ? indentLast : indent;
+
+        indentation = last ? indentLast : indent;
+
         printDetails(
             host.second.m_children.empty(), indentation, host.second.m_desc);
         printTree(indentation, host.second.m_children);
