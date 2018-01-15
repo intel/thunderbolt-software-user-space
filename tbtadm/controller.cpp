@@ -479,7 +479,8 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
             desc.emplace_back("Route-string: " + routeString + "\n");
             desc.emplace_back("Authorized: " + authorized(p) + "\n");
             desc.emplace_back("In ACL: " + inACL(p) + "\n");
-            desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
+            desc.emplace_back("UUID: " + readAndTrim(p / uniqueIDFilename)
+                              + "\n");
         }
         else if (isXDomain(p))
         {
@@ -487,7 +488,8 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
                               + readVendor(p / vendorFilename)
                               + "\n");
             desc.emplace_back("Route-string: " + routeString + "\n");
-            desc.emplace_back("UUID: " + read(p / uniqueIDFilename));
+            desc.emplace_back("UUID: " + readAndTrim(p / uniqueIDFilename)
+                              + "\n");
         }
         else
         {
