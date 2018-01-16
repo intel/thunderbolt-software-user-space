@@ -94,9 +94,9 @@ enum security_level
 };
 
 const std::string symbols[] = {
-        [SYMBOL_PIPE] = "│",
-        [SYMBOL_L]    = "└─ ",
-        [SYMBOL_PLUS] = "├─ ",
+        "│",
+        "└─ ",
+        "├─ ",
 };
 
 const std::string green  = "\x1b[0;32m";
