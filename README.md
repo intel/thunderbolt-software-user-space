@@ -1,5 +1,7 @@
 # Thunderbolt(TM) user-space components
 
+[![Build Status](https://travis-ci.org/intel/thunderbolt-software-user-space.svg?branch=master)](https://travis-ci.org/intel/thunderbolt-software-user-space)
+
 ## License
 These components are distributed under a BSD-style license. See COPYING for the
 full license.
