@@ -88,6 +88,19 @@ Installation can be done in one of 2 options:
 
 
 ## Changelog
+### v0.9.3
+- xdomain: added loading Thunderbolt networking driver automatically on XDomain
+connection
+- tbtadm: added `peers` command and XDomain is now shown in the topology output
+- tbtadm: added `add` command for adding to ACL database without `approve`
+command
+- tbtadm: fixed adding to ACL database in security level 0
+- tbtadm: fixed Coverity error reformatting string array initialization
+- tbtadm: fixed multi-controller topology tree
+- tbtadm: improved readability of console output
+- tests: added automatic testing in umockdev simulated environment with docker
+- build: remove unneeded `libboost-program-options` dependency
+
 ### v0.9.2
 - tbtadm: added `--once` flag for `approve-all` command
 - tbtadm: `approve` command added
