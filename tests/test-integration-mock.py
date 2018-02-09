@@ -52,6 +52,7 @@ except ImportError as e:
 # Configuration
 TBTADM = "tbtadm/tbtadm"
 ACL = "/var/lib/thunderbolt/acl"
+SYSFS = "/sys/bus/thunderbolt"
 VENDOR = "Mock Vendor"
 DEVICE_NAME = "Thunderbolt Cable"
 
@@ -535,7 +536,7 @@ class thunderbolt_test(unittest.TestCase):
         # Verify content of ACL directory
         ls = os.listdir(ACL + "/" + uuid)
         ls.sort()
-        self.assertTrue(ls == ['device_name', 'key','vendor_name'])
+        self.assertTrue(ls == ['device_name', 'key', 'vendor_name'])
 
         # disconnect all devices
         tree.disconnect(self.testbed)
@@ -558,6 +559,125 @@ class thunderbolt_test(unittest.TestCase):
         # disconnect all devices
         tree1.disconnect(self.testbed)
         tree2.disconnect(self.testbed)
+
+    def generate_boot_acl(self, *args):
+        ls = list(args)
+        for i in range(len(ls), 16):
+            ls.append('')
+
+        return ','.join(ls)
+
+    def add_boot_acl(self, boot_acl, uuid):
+        ls = boot_acl.split(',')
+        # Remove empty uuids
+        ls = ' '.join(ls).split()
+        if len(ls) < 16:
+            ls.append(uuid)
+        else:
+            ls.pop(0)
+            ls.append(uuid)
+
+        for i in range(len(ls), 16):
+            ls.append('')
+
+        return ','.join(ls)
+
+
+    # Test preboot_acl
+    def test_x2(self):
+        # connect all device
+        tree = self.default_mock_tree()
+        tree.connect_tree(self.testbed)
+
+        SYSFS_BOOT_ACL = SYSFS + "/devices/domain0/boot_acl"
+
+        # Generate empty boot_acl
+        boot_acl = self.generate_boot_acl()
+        self.assertEqual(len(boot_acl.split(',')), 16)
+
+        # Add new attribute to domain tree
+        tree.testbed.set_attribute(tree.syspath, "boot_acl", boot_acl)
+
+        # Test that sysfs entry created
+        self.assertTrue(os.path.isfile(SYSFS_BOOT_ACL))
+
+        # Verify content of boot_acl
+        self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl)
+
+        # Check security level
+        seclevel = self.get_seclevel()
+        self.assertEqual(seclevel, "SL2 (secure)")
+
+        authorized = self.get_authorized()
+        self.assertEqual(authorized, "No")
+
+        uuid = self.get_uuid()
+        self.assertNotEqual(uuid, None)
+
+        # ACL should not yet exist
+        self.assertFalse(os.path.isdir(ACL + "/" + uuid))
+
+        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        log.debug(output)
+
+        # Verify adding UUID to empty list
+        boot_acl_generated = self.generate_boot_acl(uuid)
+        self.assertEqual(len(boot_acl_generated.split(',')), 16)
+        log.debug(boot_acl_generated)
+
+        boot_acl_added = self.add_boot_acl(boot_acl, uuid)
+        self.assertEqual(len(boot_acl_added.split(',')), 16)
+        log.debug(boot_acl_added)
+
+        # Two ways of generation are the same ;)
+        self.assertEqual(boot_acl_generated, boot_acl_added)
+
+        self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl_generated)
+
+        # disconnect all devices
+        tree.disconnect(self.testbed)
+
+    # Test adding UUID
+    def test_x3_preboot_acl_full_list(self):
+        # connect all device
+        UUID = '00000000-0000-0000-0000-000000000001'
+        device1 = TbDevice("0-1", uid = UUID)
+        device2 = TbDevice("0-2", children = [device1])
+        tree = TbDomain(host = TbHost([device2]))
+        tree.connect_tree(self.testbed)
+
+        SYSFS_BOOT_ACL = SYSFS + "/devices/domain0/boot_acl"
+
+        # Generate uuid comma separated list
+        boot_acl = self.generate_boot_acl(
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()))
+
+        self.assertEqual(len(boot_acl.split(',')), 16)
+        log.debug(boot_acl)
+
+        # Add new attribute to domain tree
+        tree.testbed.set_attribute(tree.syspath, "boot_acl", boot_acl)
+
+        # Test that sysfs entry created
+        self.assertTrue(os.path.isfile(SYSFS_BOOT_ACL))
+
+        # Validate sysfs
+        self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl)
+
+        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        self.assertEqual(len(open(SYSFS_BOOT_ACL).read().split(',')), 16)
+        log.debug(output)
+
+        boot_acl_added = self.add_boot_acl(boot_acl, UUID)
+        self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl_added)
+
+        # disconnect all devices
+        tree.disconnect(self.testbed)
 
 if __name__ == '__main__':
     # run ourselves under umockdev
