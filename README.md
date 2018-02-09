@@ -106,14 +106,19 @@ command
 - tbtadm: `approve` command added
 - tbtadm: bash completion support added (GitHub issue #27)
 - tbtacl: udev dir config variable default values are taken from `pkg-config udev`
+- tbtadm: handle empty vendor/device name correctly (GitHub issue #25)
 
 ### v0.9.1
 - Build definition updated to support configuration, installation and packaging
 - Documentation update (GitHub issue #23)
 - man page added (GitHub issue #9)
+- Fixes for documentation (GitHub issue #20)
+- Build definition updated (GitHub issues #21, #22)
+- tbtadm: Compilation warnings (GitHub issue #22)
 
 ### v0.9
 - First official release
+- tbtacl: use C++ instead of Python for write action (GitHub issue #19)
 
 ### Eng. drop 2
 - tbtadm: more commands added (devices, topology, acl)
@@ -123,28 +128,6 @@ command
 - tbtacl: use sh instead of bash
 - tbtacl: improved error reporting (using write.py to get the actual errno)
 - tbtadm, tbtacl, tbtacl.rules: improvement and bug fixes in SL2 support
-
-
-## Known Issues
-- tbtadm should use a helper + polkit for better permission handling
-- error reporting can be improved
-- bash completion rules are less strict about completions than what `tbtadm`
-  actually accepts
-
-
-## Resolved Issues
-### v0.9.2
-- tbtadm: handle empty vendor/device name correctly (GitHub issue #25)
-
-### v0.9.1
-- Fixes for documentation (GitHub issue #20)
-- Build definition updated (GitHub issues #21, #22)
-- tbtadm: Compilation warnings (GitHub issue #22)
-
-### v0.9
-- tbtacl: use C++ instead of Python for write action (GitHub issue #19)
-
-### Eng. drop 2
 - tbtacl: fixed SL2 handling
 - tbtacl: don't assume errno(1) is installed
 - tbtacl.rules: correctly handle change with authorized==2 (for SL2)
@@ -153,6 +136,13 @@ command
 - tbtadm: 'approve-all' - add key on SL2
 - tbtadm: removing non-existing ACL entry is just a warning, not an error
 - tbtadm: File class reports errors more accurately for write() and read()
+
+
+## Known Issues
+- tbtadm should use a helper + polkit for better permission handling
+- error reporting can be improved
+- bash completion rules are less strict about completions than what `tbtadm`
+  actually accepts
 
 
 ## Information
