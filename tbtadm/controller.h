@@ -85,6 +85,9 @@ private:
     /// Adds to Boot ACL the given device
     void addToBootACL(const std::string uuid);
 
+    /// Remove from Boot ACL the given device with uuid
+    void removeFromBootACL(const std::string uuid);
+
     /// Prints ACL
     void acl();
 

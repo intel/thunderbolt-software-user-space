@@ -762,6 +762,92 @@ void tbtadm::Controller::addToBootACL(const std::string uuid)
     }
 }
 
+static void removeFromDomainBootACL(const fs::path& dm, const std::string uuid)
+{
+    auto boot_acl_path = dm / boot_acl;
+    bool amended = false;
+
+    if (!fs::exists(boot_acl_path))
+    {
+        /* Cannot find boot_acl */
+        return;
+    }
+
+    /* Read boot_acl */
+    std::stringstream stream(readAndTrim(boot_acl_path));
+    /* Check maximum allowed boot_acl string size */
+    if (stream.str().size() > 36 * 16 + 1 * 15)
+    {
+        std::cerr << "boot_acl contains too much characters\n";
+        return;
+    }
+
+    /* Queue keeps UUIDs entries for easy processing */
+    std::queue<std::string> acl_queue;
+
+    std::string substring;
+    while(getline(stream, substring, ','))
+    {
+        acl_queue.push(substring);
+    }
+
+    std::string out;
+    int i = 0;
+    while (!acl_queue.empty())
+    {
+        auto u = acl_queue.front();
+        if (u != uuid) {
+            out.append(u);
+            acl_queue.pop();
+        }
+        else
+        {
+            std::cout << "Removed UUID also from Boot ACL\n";
+            acl_queue.pop();
+            amended = true;
+            continue;
+        }
+
+        if (i++ < 15)
+        {
+            out.append(",");
+        }
+    }
+
+    if (!amended)
+    {
+        return;
+    }
+
+    while (i++ < 15)
+    {
+        out.append(",");
+    }
+
+    std::ofstream boot_acl_file(boot_acl_path.string());
+    boot_acl_file << out;
+    boot_acl_file.close();
+}
+
+void tbtadm::Controller::removeFromBootACL(const std::string uuid)
+{
+    /* For every domain in sysfs */
+    for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
+    {
+        if (dir.status().type() != fs::directory_file)
+        {
+            continue;
+        }
+
+        if (!isDomain(dir.path()))
+        {
+            continue;
+        }
+
+        removeFromDomainBootACL(dir, uuid);
+    }
+}
+
 void tbtadm::Controller::addToACL(const fs::path& dir)
 {
     auto acl = acltree / readAndTrim(dir / uniqueIDFilename);
@@ -899,7 +985,9 @@ void tbtadm::Controller::remove(std::string uuid)
     {
         m_out << "ACL entry doesn't exist\n";
     }
+
     fs::remove_all(acl);
+    removeFromBootACL(uuid);
 }
 
 // TODO: move to tbtadm-helper
