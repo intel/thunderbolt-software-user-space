@@ -237,6 +237,17 @@ int findSL()
 
     return tbtadm::Controller::UnkownSL;
 }
+
+bool sysfsDeviceExists()
+{
+    if (!fs::exists(sysfsDevicesPath))
+    {
+        std::cerr << "no thunderbolt devices found\n";
+        return false;
+    }
+
+    return true;
+}
 } // namespace
 
 tbtadm::Controller::Controller(int argc,
@@ -320,6 +331,11 @@ void tbtadm::Controller::run()
 
 void tbtadm::Controller::devices()
 {
+    if (!sysfsDeviceExists())
+    {
+        return;
+    }
+
     m_sl = findSL();
 
     // Find and print devices
@@ -366,6 +382,11 @@ void tbtadm::Controller::devices()
 
 void tbtadm::Controller::peers()
 {
+    if (!sysfsDeviceExists())
+    {
+        return;
+    }
+
     for (auto dir : boost::make_iterator_range(
              fs::directory_iterator(sysfsDevicesPath), {}))
     {
@@ -400,6 +421,11 @@ struct tbtadm::Controller::ControllerInTree
 void tbtadm::Controller::topology()
 {
     std::map<int, ControllerInTree> controllers;
+
+    if (!sysfsDeviceExists())
+    {
+        return;
+    }
 
     for (auto dir : boost::make_iterator_range(
              fs::directory_iterator(sysfsDevicesPath), {}))
@@ -545,6 +571,11 @@ void tbtadm::Controller::printDetails(bool last,
 
 void tbtadm::Controller::approveAll()
 {
+    if (!sysfsDeviceExists())
+    {
+        return;
+    }
+
     for (auto dir : boost::make_iterator_range(
              fs::directory_iterator(sysfsDevicesPath), {}))
     {
