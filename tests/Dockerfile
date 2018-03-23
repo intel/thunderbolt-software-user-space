@@ -6,6 +6,8 @@ RUN apt-get update -q && apt-get install -y \
     gir1.2-glib-2.0 \
     gir1.2-gudev-1.0 \
     python3-gi \
+    umockdev \
+    gir1.2-umockdev-1.0 \
     locales \
     pkg-config \
     udev \
