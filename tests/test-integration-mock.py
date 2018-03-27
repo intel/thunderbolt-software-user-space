@@ -544,14 +544,13 @@ class thunderbolt_test(unittest.TestCase):
     # Test multi - controller device tree
     def test_08_multi_controller_topology(self):
         # connect all device
-        device1 = TbDevice("Device1")
-        device2 = TbDevice("Device2", children = [device1])
+        device1 = TbDevice("0-2")
+        device2 = TbDevice("0-1", children = [device1])
         tree1 = TbDomain(host = TbHost([device2]))
         tree1.connect_tree(self.testbed)
 
-        device3 = TbDevice("Device3")
-        device4 = TbDevice("Device4", children = [device3])
-        tree2 = TbDomain(host = TbHost([device4], index = 1), index = 1)
+        device3 = TbDevice("1-1")
+        tree2 = TbDomain(host = TbHost([device3], index = 1), index = 1)
         tree2.connect_tree(self.testbed)
 
         subprocess.run(shlex.split("%s topology" % TBTADM))
