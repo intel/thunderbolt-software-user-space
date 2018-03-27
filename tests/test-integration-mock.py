@@ -769,6 +769,65 @@ class thunderbolt_test(unittest.TestCase):
         # disconnect all devices
         tree.disconnect(self.testbed)
 
+    # Test multi controllers with preboot_acl
+    def test_12_preboot_acl_multi_controller(self):
+        # connect all device
+        # First controller
+        UUID = '00000000-0000-0000-0000-000000000001'
+        device1 = TbDevice("0-2")
+        device2 = TbDevice("0-1", uid = UUID, children = [device1])
+        tree1 = TbDomain(host = TbHost([device2]))
+
+        # Second controller
+        device3 = TbDevice("1-1")
+        tree2 = TbDomain(host = TbHost([device3], index = 1), index = 1)
+
+        tree1.connect_tree(self.testbed)
+        tree2.connect_tree(self.testbed)
+
+        SYSFS_DOMAIN0_BOOT_ACL = SYSFS + "/devices/domain0/boot_acl"
+        SYSFS_DOMAIN1_BOOT_ACL = SYSFS + "/devices/domain1/boot_acl"
+
+        # Generate uuid comma separated list
+        boot_acl = self.generate_boot_acl(
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                str(uuid.uuid4()))
+
+        self.assertEqual(len(boot_acl.split(',')), 16)
+        log.debug(boot_acl)
+
+        # Add new attribute to domain trees
+        tree1.testbed.set_attribute(tree1.syspath, "boot_acl", boot_acl)
+        tree2.testbed.set_attribute(tree2.syspath, "boot_acl", boot_acl)
+
+        # Test that sysfs entry created for each domain
+        self.assertTrue(os.path.isfile(SYSFS_DOMAIN0_BOOT_ACL))
+        self.assertTrue(os.path.isfile(SYSFS_DOMAIN1_BOOT_ACL))
+
+        # Validate sysfs
+        self.assertEqual(open(SYSFS_DOMAIN0_BOOT_ACL).read(), boot_acl)
+        self.assertEqual(open(SYSFS_DOMAIN1_BOOT_ACL).read(), boot_acl)
+
+        subprocess.run(shlex.split("%s topology" % TBTADM))
+
+        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        log.debug(output)
+        self.assertEqual(len(open(SYSFS_DOMAIN0_BOOT_ACL).read().split(',')), 16)
+
+        boot_acl_added = self.add_boot_acl(boot_acl, UUID)
+        self.assertEqual(open(SYSFS_DOMAIN0_BOOT_ACL).read(), boot_acl_added)
+        self.assertEqual(open(SYSFS_DOMAIN1_BOOT_ACL).read(), boot_acl_added)
+
+        log.debug(open(SYSFS_DOMAIN0_BOOT_ACL).read())
+        log.debug(open(SYSFS_DOMAIN1_BOOT_ACL).read())
+
+        tree1.disconnect(self.testbed)
+        tree2.disconnect(self.testbed)
+
 if __name__ == '__main__':
     # run ourselves under umockdev
     if 'umockdev' not in os.environ.get('LD_PRELOAD', ''):
