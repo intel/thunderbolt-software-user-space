@@ -825,6 +825,20 @@ class thunderbolt_test(unittest.TestCase):
         log.debug(open(SYSFS_DOMAIN0_BOOT_ACL).read())
         log.debug(open(SYSFS_DOMAIN1_BOOT_ACL).read())
 
+        # Test removing from boot_acl for every domain
+        output = subprocess.check_output(shlex.split("%s remove 0-1" % TBTADM))
+        self.assertEqual(len(open(SYSFS_DOMAIN0_BOOT_ACL).read().split(',')), 16)
+        self.assertEqual(len(open(SYSFS_DOMAIN1_BOOT_ACL).read().split(',')), 16)
+        log.debug(output)
+
+        log.debug(open(SYSFS_DOMAIN0_BOOT_ACL).read())
+        log.debug(open(SYSFS_DOMAIN1_BOOT_ACL).read())
+
+        # Verify boot_acl after removing element
+        boot_acl_deleted = self.del_boot_acl(boot_acl_added, UUID)
+        self.assertEqual(open(SYSFS_DOMAIN0_BOOT_ACL).read(), boot_acl_deleted)
+        self.assertEqual(open(SYSFS_DOMAIN1_BOOT_ACL).read(), boot_acl_deleted)
+
         tree1.disconnect(self.testbed)
         tree2.disconnect(self.testbed)
 
