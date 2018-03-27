@@ -282,7 +282,7 @@ class thunderbolt_test(unittest.TestCase):
         return self.extract_property(self.get_info(), "UUID")
 
     # the actual tests
-    def test_tbtadm_devices(self):
+    def test_01_tbtadm_devices(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -298,7 +298,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Get security level through tbtadm topology
-    def test_tbtadm_domain_seclevel(self):
+    def test_02_tbtadm_domain_seclevel(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -324,7 +324,7 @@ class thunderbolt_test(unittest.TestCase):
         # disconnect all devices
         tree.disconnect(self.testbed)
 
-    def test_tbtadm_authorization_sl0(self):
+    def test_03_tbtadm_authorization_sl0(self):
         # connect all device
         tree = self.authorized_mock_tree()
         tree.connect_tree(self.testbed)
@@ -384,7 +384,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test authorization in SL1 (approve --once)
-    def test_tbtadm_authorization_sl1(self):
+    def test_04_tbtadm_authorization_sl1(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -417,7 +417,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test authorization and ACL management in SL1 mode
-    def test_tbtadm_approve_sl1(self):
+    def test_05_tbtadm_approve_sl1(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -461,7 +461,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test authorization in SL2 (approve --once)
-    def test_tbtadm_authorization_sl2(self):
+    def test_06_tbtadm_authorization_sl2(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -494,7 +494,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test authorization and ACL management in SL2 mode
-    def test_tbtadm_approve_sl2(self):
+    def test_07_tbtadm_approve_sl2(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -542,7 +542,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test multi - controller device tree
-    def test_x(self):
+    def test_08_multi_controller_topology(self):
         # connect all device
         device1 = TbDevice("Device1")
         device2 = TbDevice("Device2", children = [device1])
@@ -602,7 +602,7 @@ class thunderbolt_test(unittest.TestCase):
         return ','.join(ls)
 
     # Test preboot_acl
-    def test_x2(self):
+    def test_09_preboot_acl(self):
         # connect all device
         tree = self.default_mock_tree()
         tree.connect_tree(self.testbed)
@@ -664,7 +664,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test adding and removing UUID to boot_acl with existing 16 entries
-    def test_x3_preboot_acl_full_list(self):
+    def test_10_preboot_acl_full_list(self):
         # connect all device
         UUID = '00000000-0000-0000-0000-000000000001'
         device1 = TbDevice("0-1", uid = UUID)
@@ -716,7 +716,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.disconnect(self.testbed)
 
     # Test removing from boot_acl with non present entry to be removed
-    def test_x4_preboot_acl_remove_not_present(self):
+    def test_11_preboot_acl_remove_not_present(self):
         # connect all device
         UUID = '00000000-0000-0000-0000-000000000001'
         device1 = TbDevice("0-1", uid = UUID)
