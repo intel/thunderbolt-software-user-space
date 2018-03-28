@@ -220,8 +220,7 @@ int findSL()
 {
     if (fs::exists(sysfsDevicesPath))
     {
-        for (auto dir : boost::make_iterator_range(
-                 fs::directory_iterator(sysfsDevicesPath), {}))
+        for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
         {
             if (dir.status().type() != fs::directory_file)
             {
@@ -339,8 +338,7 @@ void tbtadm::Controller::devices()
     m_sl = findSL();
 
     // Find and print devices
-    for (auto dir : boost::make_iterator_range(
-             fs::directory_iterator(sysfsDevicesPath), {}))
+    for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
         if (dir.status().type() != fs::directory_file)
         {
@@ -387,8 +385,7 @@ void tbtadm::Controller::peers()
         return;
     }
 
-    for (auto dir : boost::make_iterator_range(
-             fs::directory_iterator(sysfsDevicesPath), {}))
+    for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
         if (dir.status().type() != fs::directory_file)
         {
@@ -427,8 +424,7 @@ void tbtadm::Controller::topology()
         return;
     }
 
-    for (auto dir : boost::make_iterator_range(
-             fs::directory_iterator(sysfsDevicesPath), {}))
+    for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
         if (dir.status().type() != fs::directory_file)
         {
@@ -488,8 +484,7 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
         return "Yes";
     };
 
-    for (auto dir :
-         boost::make_iterator_range(fs::directory_iterator(path), {}))
+    for (auto& dir : fs::directory_iterator(path))
     {
         if (dir.status().type() != fs::directory_file)
         {
@@ -576,8 +571,7 @@ void tbtadm::Controller::approveAll()
         return;
     }
 
-    for (auto dir : boost::make_iterator_range(
-             fs::directory_iterator(sysfsDevicesPath), {}))
+    for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
         if (dir.status().type() != fs::directory_file)
         {
@@ -610,8 +604,7 @@ void tbtadm::Controller::approveAll()
 
 void tbtadm::Controller::approveAll(const fs::path& dir)
 {
-    for (auto child :
-         boost::make_iterator_range(fs::directory_iterator(dir), {}))
+    for (auto& child : fs::directory_iterator(dir))
     {
         if (child.status().type() != fs::directory_file)
         {
@@ -712,8 +705,7 @@ void tbtadm::Controller::acl()
     std::map<std::string, bool> uuids;
     if (fs::exists(sysfsDevicesPath))
     {
-        for (auto dir : boost::make_iterator_range(
-                 fs::directory_iterator(sysfsDevicesPath), {}))
+        for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
         {
             if (dir.status().type() != fs::directory_file)
             {
@@ -734,8 +726,7 @@ void tbtadm::Controller::acl()
 
     // Print ACL
     bool doNoKey = false;
-    for (auto dir :
-         boost::make_iterator_range(fs::directory_iterator(acltree), {}))
+    for (auto& dir : fs::directory_iterator(acltree))
     {
         const auto p = dir.path();
         if (m_sl != SECURITY_LEVEL_SECURE || fs::exists(p / keyFilename))
@@ -762,8 +753,7 @@ void tbtadm::Controller::acl()
     if (doNoKey)
     {
         m_out << "\nACL entries with no key (not for current security mode):\n";
-        for (auto dir :
-             boost::make_iterator_range(fs::directory_iterator(acltree), {}))
+        for (auto& dir : fs::directory_iterator(acltree))
         {
             const auto p = dir.path();
             if (!fs::exists(p / keyFilename))
