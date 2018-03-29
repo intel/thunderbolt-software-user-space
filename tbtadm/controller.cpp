@@ -122,9 +122,15 @@ std::string read(const fs::path& path)
     return content;
 }
 
+/* Trim right characters */
+std::string rtrim(const std::string& str, const std::string& chars = " \n\r")
+{
+    return str.substr(0, str.find_last_not_of(chars) + 1);
+}
+
 std::string readAndTrim(const fs::path& path)
 {
-    return boost::algorithm::trim_copy(read(path));
+    return rtrim(read(path));
 }
 
 /**
