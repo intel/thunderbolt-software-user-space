@@ -38,9 +38,6 @@
 #include <iterator>
 #include <algorithm>
 
-#include <boost/range/iterator_range.hpp>
-#include <boost/algorithm/string/trim.hpp>
-
 #include "file.h"
 
 using namespace std::string_literals;
