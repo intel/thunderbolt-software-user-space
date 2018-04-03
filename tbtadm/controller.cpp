@@ -399,13 +399,11 @@ void tbtadm::Controller::peers()
             continue;
         }
 
-        chdir(dir.path());
-
         // TODO: better formatting
         const auto routeString = dir.path().filename().string();
 
-        m_out << routeString << '\t' << readVendor(vendorFilename) << '\t'
-              << readDevice(deviceFilename) << std::endl;
+        m_out << routeString << '\t' << readVendor(dir.path() / vendorFilename)
+              << '\t' << readDevice(dir.path() / deviceFilename) << std::endl;
     }
 }
 
