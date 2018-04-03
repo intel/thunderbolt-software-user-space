@@ -225,7 +225,7 @@ int findSL()
     {
         for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
         {
-            if (dir.status().type() != fs::directory_file)
+            if (!is_directory(dir))
             {
                 continue;
             }
@@ -343,7 +343,7 @@ void tbtadm::Controller::devices()
     // Find and print devices
     for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
-        if (dir.status().type() != fs::directory_file)
+        if (!is_directory(dir))
         {
             continue;
         }
@@ -390,7 +390,7 @@ void tbtadm::Controller::peers()
 
     for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
-        if (dir.status().type() != fs::directory_file)
+        if (!is_directory(dir))
         {
             continue;
         }
@@ -429,7 +429,7 @@ void tbtadm::Controller::topology()
 
     for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
-        if (dir.status().type() != fs::directory_file)
+        if (!is_directory(dir))
         {
             continue;
         }
@@ -489,7 +489,7 @@ void tbtadm::Controller::createTree(ControllerInTree& controller,
 
     for (auto& dir : fs::directory_iterator(path))
     {
-        if (dir.status().type() != fs::directory_file)
+        if (!is_directory(dir))
         {
             continue;
         }
@@ -576,7 +576,7 @@ void tbtadm::Controller::approveAll()
 
     for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
     {
-        if (dir.status().type() != fs::directory_file)
+        if (!is_directory(dir))
         {
             continue;
         }
@@ -609,7 +609,7 @@ void tbtadm::Controller::approveAll(const fs::path& dir)
 {
     for (auto& child : fs::directory_iterator(dir))
     {
-        if (child.status().type() != fs::directory_file)
+        if (!is_directory(child))
         {
             continue;
         }
@@ -710,7 +710,7 @@ void tbtadm::Controller::acl()
     {
         for (auto& dir : fs::directory_iterator(sysfsDevicesPath))
         {
-            if (dir.status().type() != fs::directory_file)
+            if (!is_directory(dir))
             {
                 continue;
             }
