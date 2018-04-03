@@ -37,6 +37,7 @@
 #include <random>
 #include <iterator>
 #include <algorithm>
+#include <unistd.h>
 
 #include "file.h"
 

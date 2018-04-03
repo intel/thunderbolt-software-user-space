@@ -35,7 +35,13 @@
 
 #include <fcntl.h> // for O_RDONLY, O_WRONLY
 
+#ifdef USE_STD_FS
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#else
 #include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#endif
 
 namespace tbtadm
 {
@@ -75,10 +81,7 @@ public:
      * @param filename  Name/path of the file to open
      * @param mode      File open mode
      */
-    File(const boost::filesystem::path& path,
-         Mode mode,
-         int flags = 0,
-         int perm  = 0);
+    File(const fs::path& path, Mode mode, int flags = 0, int perm  = 0);
 
     /**
      * @brief Open the file
@@ -132,7 +135,7 @@ private:
     int m_fd = ERROR;
 };
 
-void chdir(const boost::filesystem::path& dir);
+void chdir(const fs::path& dir);
 
 inline File& operator<<(File& file, const std::string& t)
 {

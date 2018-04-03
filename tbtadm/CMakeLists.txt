@@ -1,7 +1,12 @@
 project(tbtadm VERSION 0.1 LANGUAGES CXX)
 
 add_executable(${PROJECT_NAME} "main.cpp" "controller.cpp")
+
+if(use-std-filesystem)
+target_link_libraries(${PROJECT_NAME} PRIVATE common stdc++fs)
+else(use-std-filesystem)
 target_link_libraries(${PROJECT_NAME} PRIVATE common)
+endif(use-std-filesystem)
 
 target_compile_options(${PROJECT_NAME} PRIVATE
 	$<$<COMPILE_LANGUAGE:CXX>:${TBT_CXXFLAGS}>)

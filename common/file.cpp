@@ -35,7 +35,12 @@
 #include <system_error>
 #include <unistd.h>
 
+#ifdef USE_STD_FS
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#else
 namespace fs = boost::filesystem;
+#endif
 
 namespace
 {
