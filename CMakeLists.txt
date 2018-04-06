@@ -21,7 +21,6 @@ if (use-std-filesystem)
 add_definitions(-DUSE_STD_FS)
 endif (use-std-filesystem)
 
-add_subdirectory(common)
 add_subdirectory(tbtacl)
 add_subdirectory(tbtxdomain)
 add_subdirectory(tbtadm)
