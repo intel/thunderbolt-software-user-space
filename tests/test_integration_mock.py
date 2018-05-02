@@ -544,9 +544,9 @@ class thunderbolt_test(unittest.TestCase):
     # Test multi - controller device tree
     def test_08_multi_controller_topology(self):
         # connect all device
-        device1 = TbDevice("0-2")
-        device2 = TbDevice("0-1", children = [device1])
-        tree1 = TbDomain(host = TbHost([device2]))
+        device2 = TbDevice("0-101")
+        device1 = TbDevice("0-1", children = [device2])
+        tree1 = TbDomain(host = TbHost([device1]))
         tree1.connect_tree(self.testbed)
 
         device3 = TbDevice("1-1")
@@ -666,9 +666,9 @@ class thunderbolt_test(unittest.TestCase):
     def test_10_preboot_acl_full_list(self):
         # connect all device
         UUID = '00000000-0000-0000-0000-000000000001'
-        device1 = TbDevice("0-1", uid = UUID)
-        device2 = TbDevice("0-2", children = [device1])
-        tree = TbDomain(host = TbHost([device2]))
+        device2 = TbDevice("0-101", uid = UUID)
+        device1 = TbDevice("0-1", children = [device2])
+        tree = TbDomain(host = TbHost([device1]))
         tree.connect_tree(self.testbed)
 
         SYSFS_BOOT_ACL = SYSFS + "/devices/domain0/boot_acl"
@@ -694,17 +694,16 @@ class thunderbolt_test(unittest.TestCase):
         # Validate sysfs
         self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl)
 
-        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        output = subprocess.check_output(shlex.split("%s approve 0-101" % TBTADM))
         self.assertEqual(len(open(SYSFS_BOOT_ACL).read().split(',')), 16)
         log.debug(output)
 
         boot_acl_added = self.add_boot_acl(boot_acl, UUID)
         self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl_added)
+        log.debug("read boot_acl %s" % open(SYSFS_BOOT_ACL).read())
 
         # Test removing UUID
-        output = subprocess.check_output(shlex.split("%s remove 0-1" % TBTADM))
-        log.debug(output)
-
+        output = subprocess.check_output(shlex.split("%s remove 0-101" % TBTADM))
         log.debug("read boot_acl %s" % open(SYSFS_BOOT_ACL).read())
 
         # Verify boot_acl after removing element
@@ -718,9 +717,9 @@ class thunderbolt_test(unittest.TestCase):
     def test_11_preboot_acl_remove_not_present(self):
         # connect all device
         UUID = '00000000-0000-0000-0000-000000000001'
-        device1 = TbDevice("0-1", uid = UUID)
-        device2 = TbDevice("0-2", children = [device1])
-        tree = TbDomain(host = TbHost([device2]))
+        device2 = TbDevice("0-101", uid = UUID)
+        device1 = TbDevice("0-1", children = [device2])
+        tree = TbDomain(host = TbHost([device1]))
         tree.connect_tree(self.testbed)
 
         SYSFS_BOOT_ACL = SYSFS + "/devices/domain0/boot_acl"
@@ -746,7 +745,7 @@ class thunderbolt_test(unittest.TestCase):
         # Validate sysfs
         self.assertEqual(open(SYSFS_BOOT_ACL).read(), boot_acl)
 
-        output = subprocess.check_output(shlex.split("%s approve 0-1" % TBTADM))
+        output = subprocess.check_output(shlex.split("%s approve 0-101" % TBTADM))
         self.assertEqual(len(open(SYSFS_BOOT_ACL).read().split(',')), 16)
         log.debug(output)
 
@@ -757,7 +756,7 @@ class thunderbolt_test(unittest.TestCase):
         tree.testbed.set_attribute(tree.syspath, "boot_acl", boot_acl)
 
         # Test removing UUID
-        output = subprocess.check_output(shlex.split("%s remove 0-1" % TBTADM))
+        output = subprocess.check_output(shlex.split("%s remove 0-101" % TBTADM))
         log.debug(output)
 
         log.debug("read boot_acl %s" % open(SYSFS_BOOT_ACL).read())
@@ -774,9 +773,9 @@ class thunderbolt_test(unittest.TestCase):
         # connect all device
         # First controller
         UUID = '00000000-0000-0000-0000-000000000001'
-        device1 = TbDevice("0-2")
-        device2 = TbDevice("0-1", uid = UUID, children = [device1])
-        tree1 = TbDomain(host = TbHost([device2]))
+        device2 = TbDevice("0-101")
+        device1 = TbDevice("0-1", uid = UUID, children = [device2])
+        tree1 = TbDomain(host = TbHost([device1]))
 
         # Second controller
         device3 = TbDevice("1-1")
