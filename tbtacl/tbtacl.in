@@ -32,7 +32,7 @@
 ################################################################################
 
 log="logger -t tbtacl $$:"
-$log args: $*
+$log args: "$*"
 
 acltree=/var/lib/thunderbolt/acl
 write_helper=@UDEV_BIN_DIR@/tbtacl-write
@@ -41,11 +41,11 @@ action=$1
 device=/sys$2
 
 debug() {
-	$log $*
+	$log "$*"
 }
 
 die() {
-	debug $*
+	debug "$*"
 	exit 1
 }
 
@@ -56,37 +56,37 @@ authorize() {
 
 	# TOCTOU protection: chdir so if an attacker replaces the device between
 	# the read of unique_id and the write of authorized, the write will fail
-	cd $1 || { debug "can't access" $1 ; return 1 ; }
+	cd "$1" || { debug "can't access $1" ; return 1 ; }
 
-	$log authorizing $1
+	$log authorizing "$1"
 
 	uuid=$( cat unique_id )
 	[ -n "$uuid" ] || { debug -p err no UUID; return 1 ; } # Exit if UUID read failed
 
-	[ -e $acltree/$uuid ] || { debug not in ACL ; return 1 ; } # Exit if UUID isn't in ACL
+	[ -e "$acltree/$uuid" ] || { debug not in ACL ; return 1 ; } # Exit if UUID isn't in ACL
 
-	if [ $sl -eq 2 ]; then
+	if [ "$sl" -eq 2 ]; then
 		# Exit if device doesn't support SL2 or key is empty
 		[ -e key ] || { debug "device doesn't support SL2"; return 1 ; }
-		[ -e $acltree/$uuid/key ] || { debug no key found ; return 1 ; }
+		[ -e "$acltree/$uuid/key" ] || { debug no key found ; return 1 ; }
 
-		cat $acltree/$uuid/key > key
+		cat "$acltree/$uuid/key" > key
 		$log key found
 	fi
 
-	$write_helper $sl authorized
+	$write_helper "$sl" authorized
 	err=$?
-	if $( which errno ); then
+	if which errno; then
 		errstr=$( errno $err | cut -d' ' -f1 )
 	fi
 
-	$log authorization result: $err $errstr
+	$log "authorization result: $err $errstr"
 
 	case "$err" in
 		126|129) # ENOKEY or EKEYREJECTED
-			rm -f $acltree/$uuid/key
+			rm -f "$acltree/$uuid/key"
 			debug invalid key removed, reapprove
-			udevadm trigger -c change $1 # Not needed if GUI watchs $acltree/$uuid/key
+			udevadm trigger -c change "$1" # Not needed if GUI watchs $acltree/$uuid/key
 			;;
 	esac
 }
@@ -94,12 +94,12 @@ authorize() {
 
 # Find the domain and extract the current SL
 domain=$device
-while [ -n "$domain" ] && [ $domain != '/' ]; do
-	basename $domain | grep -Fq "domain" && break
-	domain=$( dirname $domain )
+while [ -n "$domain" ] && [ "$domain" != '/' ]; do
+	basename "$domain" | grep -Fq "domain" && break
+	domain=$( dirname "$domain" )
 done
 
-sl=$( cat $domain/security )
+sl=$( cat "$domain/security" )
 case "$sl" in
 	user)	sl=1
 		;;
@@ -114,24 +114,24 @@ esac
 
 case "$action" in
 	# New device attached, go to authorize it
-	add)	authorize $device
+	add)	authorize "$device"
 		;;
 
 	# The device got authorized, let's try to authorize again the devices
 	# behind it
-	change)	list=$device/*/authorized
+	change)	list="$device/*/authorized"  # this glob is expanded later
 		# Stop if no substitution was done (no relevant childs found)
 		echo $list | grep -Fvq '*' || die no childs found
 
 		for i in $list ; do
-			i=$( dirname $i )
-			[ -e $i/uevent ] || continue
-			if grep -Fxq 'DEVTYPE=thunderbolt_device' $i/uevent; then
-				authorize $i
+			i=$( dirname "$i" )
+			[ -e "$i/uevent" ] || continue
+			if grep -Fxq 'DEVTYPE=thunderbolt_device' "$i/uevent"; then
+				authorize "$i"
 			fi
 		done
 		;;
 
-	*)	die unhandled action: $action
+	*)	die "unhandled action: $action"
 		;;
 esac
